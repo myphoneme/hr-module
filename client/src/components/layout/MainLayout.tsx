@@ -1,25 +1,14 @@
-import { ReactNode, useState } from 'react';
+import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
-import { useAuth } from '../../contexts/AuthContext';
 
 interface MainLayoutProps {
   children: ReactNode;
-  title: string;
-  searchQuery?: string;
-  onSearchChange?: (query: string) => void;
-  showSearch?: boolean;
 }
 
-export function MainLayout({
-  children,
-  title,
-  searchQuery,
-  onSearchChange,
-  showSearch = false,
-}: MainLayoutProps) {
+export function MainLayout({ children }: MainLayoutProps) {
   const [currentPage, setCurrentPage] = useState('tasks');
-  const { isAdmin } = useAuth();
 
   const handlePageChange = (page: string) => {
     setCurrentPage(page);
@@ -30,12 +19,7 @@ export function MainLayout({
     <div className="min-h-screen bg-gray-50">
       <Sidebar currentPage={currentPage} onPageChange={handlePageChange} />
       <div className="ml-64 transition-all duration-300">
-        <Header
-          title={title}
-          searchQuery={searchQuery}
-          onSearchChange={onSearchChange}
-          showSearch={showSearch}
-        />
+        <Header />
         <main className="p-6">{children}</main>
       </div>
     </div>

@@ -42,7 +42,7 @@ This is a full-stack Task Manager application with Google OAuth authentication a
 - **Database**: SQLite via better-sqlite3, initialized in `src/db.ts`
 - **Auth**: Google OAuth token verification via `google-auth-library`, JWT in httpOnly cookies
 - **Middleware**: `src/middleware/auth.ts` (authenticateToken, requireAdmin)
-- **Routes**: auth (Google + email/password), users, settings (admin), todos, comments
+- **Routes**: auth, todos, comments, users, settings (admin), notifications, ai
 - **Database File**: `server/database.sqlite` (auto-created on first run)
 
 ### Authentication System
@@ -63,10 +63,11 @@ This is a full-stack Task Manager application with Google OAuth authentication a
    - Client: `VITE_GOOGLE_CLIENT_ID=your-client-id` (in `.env` file)
 
 ### Database Schema
-- `users`: id, email, password (empty for Google users), name, role, isActive, timestamps
+- `users`: id, email, password (empty for Google users), name, role, isActive, profilePhoto, lastLoginAt, timestamps
 - `settings`: key-value store (e.g., `allowed_domains`)
-- `todos`: id, title, description, assignerId (FK), assigneeId (FK), completed, timestamps
+- `todos`: id, title, description, assignerId (FK), assigneeId (FK), completed, priority (low/medium/high), isFavorite, dueDate, timestamps
 - `comments`: id, todoId (FK), authorId (FK), content, createdAt
+- `notifications`: id, userId (FK), type, title, message, relatedId, isRead, createdAt
 
 ### Access Control
 - **Admin**: Full access - manage users, settings, edit/delete any task or comment

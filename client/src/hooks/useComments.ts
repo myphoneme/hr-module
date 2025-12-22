@@ -25,7 +25,7 @@ export const useDeleteComment = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, todoId }: { id: number; todoId: number }) =>
+    mutationFn: ({ id }: { id: number; todoId: number }) =>
       commentsApi.delete(id),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['comments', variables.todoId] });

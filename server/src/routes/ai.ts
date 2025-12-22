@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import OpenAI from 'openai';
 import { authenticateToken } from '../middleware/auth';
 import db from '../db';
-import type { User, Todo } from '../types';
+import type { User, Todo, TodoWithUsers } from '../types';
 
 const router = Router();
 
@@ -170,7 +170,7 @@ function executeListTasks(userId: number, args: { filter?: string; limit?: numbe
   query += ' ORDER BY t.createdAt DESC LIMIT ?';
   params.push(limit);
 
-  const tasks = db.prepare(query).all(...params) as Todo[];
+  const tasks = db.prepare(query).all(...params) as TodoWithUsers[];
   return tasks.map(t => ({
     id: t.id,
     title: t.title,
@@ -423,6 +423,7 @@ Always be professional and friendly. Use the user's name occasionally to persona
 
       // Process each tool call
       for (const toolCall of assistantMessage.tool_calls) {
+        if (toolCall.type !== 'function') continue;
         const toolName = toolCall.function.name;
         const toolInput = JSON.parse(toolCall.function.arguments);
         const toolResult = processToolCall(toolName, toolInput, userId);

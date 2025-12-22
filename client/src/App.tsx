@@ -3,6 +3,21 @@ import { useAuth } from './contexts/AuthContext';
 import { LoginPage } from './components/LoginPage';
 import { TaskManager } from './components/TaskManager';
 import { AdminPanel } from './components/AdminPanel';
+import { CompanyBranchManager } from './components/CompanyBranchManager';
+import { BankAccountManager } from './components/BankAccountManager';
+import { ProjectManager } from './components/ProjectManager';
+import { VendorManager } from './components/VendorManager';
+import { EmployeeManager } from './components/EmployeeManager';
+import { TransactionNatureManager } from './components/TransactionNatureManager';
+import { CategoryGroupManager } from './components/CategoryGroupManager';
+import { CategoryManager } from './components/CategoryManager';
+import OfferLetterManager from './components/OfferLetterManager';
+import RAGOfferLetterManager from './components/RAGOfferLetterManager';
+import CompanyLetterManager from './components/CompanyLetterManager';
+import { SignatoryManager } from './components/SignatoryManager';
+import PromptOfferLetterGenerator from './components/PromptOfferLetterGenerator';
+import LetterheadManager from './components/LetterheadManager';
+import { RecruitmentHub } from './components/RecruitmentHub';
 import { Sidebar, Header } from './components/layout';
 import { AIAssistant } from './components/AIAssistant';
 import { Messages } from './components/Messages';
@@ -39,6 +54,81 @@ function App() {
   // Render admin panel if selected
   if (currentPage === 'admin' && isAdmin) {
     return <AdminPanel onBack={() => setCurrentPage('tasks')} />;
+  }
+
+  // Render company-branch manager if selected (admin only)
+  if (currentPage === 'companies' && isAdmin) {
+    return <CompanyBranchManager onBack={() => setCurrentPage('tasks')} />;
+  }
+
+  // Render bank account manager if selected (admin only)
+  if (currentPage === 'bank-accounts' && isAdmin) {
+    return <BankAccountManager onBack={() => setCurrentPage('tasks')} />;
+  }
+
+  // Render project manager if selected (admin only)
+  if (currentPage === 'projects' && isAdmin) {
+    return <ProjectManager onBack={() => setCurrentPage('tasks')} />;
+  }
+
+  // Render vendor manager if selected (admin only)
+  if (currentPage === 'vendors' && isAdmin) {
+    return <VendorManager onBack={() => setCurrentPage('tasks')} />;
+  }
+
+  // Render employee manager if selected (admin only)
+  if (currentPage === 'employees' && isAdmin) {
+    return <EmployeeManager onBack={() => setCurrentPage('tasks')} />;
+  }
+
+  // Render transaction nature manager if selected (admin only)
+  if (currentPage === 'transaction-nature' && isAdmin) {
+    return <TransactionNatureManager onBack={() => setCurrentPage('tasks')} />;
+  }
+
+  // Render category group manager if selected (admin only)
+  if (currentPage === 'category-group' && isAdmin) {
+    return <CategoryGroupManager onBack={() => setCurrentPage('tasks')} />;
+  }
+
+  // Render category manager if selected (admin only)
+  if (currentPage === 'category' && isAdmin) {
+    return <CategoryManager onBack={() => setCurrentPage('tasks')} />;
+  }
+
+  // Render offer letter manager if selected (admin only)
+  if (currentPage === 'offer-letters' && isAdmin) {
+    return <OfferLetterManager onBack={() => setCurrentPage('tasks')} />;
+  }
+
+  // Render AI training (RAG) manager if selected (admin only)
+  if (currentPage === 'ai-training' && isAdmin) {
+    return <RAGOfferLetterManager onBack={() => setCurrentPage('tasks')} />;
+  }
+
+  // Render company letter manager if selected (admin only)
+  if (currentPage === 'company-letters' && isAdmin) {
+    return <CompanyLetterManager onBack={() => setCurrentPage('tasks')} />;
+  }
+
+  // Render signatory manager if selected (admin only)
+  if (currentPage === 'signatories' && isAdmin) {
+    return <SignatoryManager onBack={() => setCurrentPage('tasks')} />;
+  }
+
+  // Render AI offer generator if selected (admin only)
+  if (currentPage === 'ai-offer-generator' && isAdmin) {
+    return <PromptOfferLetterGenerator onBack={() => setCurrentPage('tasks')} />;
+  }
+
+  // Render letterhead manager if selected (admin only)
+  if (currentPage === 'letterheads' && isAdmin) {
+    return <LetterheadManager onBack={() => setCurrentPage('tasks')} />;
+  }
+
+  // Render recruitment hub if selected (admin only)
+  if (currentPage === 'recruitment-hub' && isAdmin) {
+    return <RecruitmentHub onBack={() => setCurrentPage('tasks')} />;
   }
 
   // Main app with sidebar

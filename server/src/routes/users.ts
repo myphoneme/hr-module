@@ -165,7 +165,7 @@ router.put('/:id', requireAdmin, (req: Request, res: Response): void => {
     return;
   }
 
-  updates.push('updatedAt = datetime("now")');
+  updates.push("updatedAt = datetime('now')");
   values.push(userId);
 
   db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values);

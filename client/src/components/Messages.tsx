@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
 
 interface Conversation {
   id: string;
@@ -25,7 +24,6 @@ interface MessagesProps {
 }
 
 export function Messages({ isOpen, onClose }: MessagesProps) {
-  const { user } = useAuth();
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [messageInput, setMessageInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
