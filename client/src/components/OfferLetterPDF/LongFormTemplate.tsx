@@ -391,30 +391,8 @@ export function LongFormTemplate({ letterContent }: LongFormTemplateProps) {
         <View style={styles.numberedSection}>
           <Text style={styles.numberedHeading}>9. INTELLECTUAL PROPERTY & ASSIGNMENT:</Text>
           <Text style={styles.text}>
-            During the course of your employment, if you conceive of any new or advanced methods, inventions, designs or improvements, processes/systems in relation to the operation of the Company, all such developments shall be communicated to the Company and shall be and remain the sole right/property of the Company and you shall execute documents and do all things necessary to enable the Company to obtain all rights to the same.
+            [Content for this section should be dynamically generated based on the selected HR document template.]
           </Text>
-          <Text style={styles.text}>
-            You hereby agree and assign to the Company, your entire right, title, and interest (including all patent rights, copyrights, trade secret rights, and other applicable intellectual property rights) in all Inventions made or conceived by you (whether alone or jointly with others) relating to development services performed for the Company or relating to any Proprietary Information supplied to you by the Company.
-          </Text>
-          <Text style={styles.text}>In connection with all Company Inventions:</Text>
-          <View style={styles.listItem}>
-            <Text style={styles.listNumber}>a)</Text>
-            <Text style={styles.listContent}>
-              You will, both during and after your performance of development services for the Company, at the Company's request, promptly execute one or more specific irrevocable assignments of title to the Company, and do whatever else is deemed necessary or advisable by the Company, to secure, perfect, and maintain patent rights, copyrights, trade secret rights, in India and foreign countries.
-            </Text>
-          </View>
-          <View style={styles.listItem}>
-            <Text style={styles.listNumber}>b)</Text>
-            <Text style={styles.listContent}>
-              You hereby irrevocably transfer and assign to the Company any and all "Moral Rights" that you may have in or with respect to any Company Invention. You also hereby forever waive and agree never to assert any and all Moral Rights that you may have.
-            </Text>
-          </View>
-          <View style={styles.listItem}>
-            <Text style={styles.listNumber}>c)</Text>
-            <Text style={styles.listContent}>
-              You acknowledge that any Company Invention that constitutes an original work of authorship is "Work made for hire," and that the Company owns all copyrights for such work.
-            </Text>
-          </View>
         </View>
 
         <PageFooter letterhead={letterheadData} />
@@ -426,42 +404,9 @@ export function LongFormTemplate({ letterContent }: LongFormTemplateProps) {
 
         <View style={styles.numberedSection}>
           <Text style={styles.numberedHeading}>10. MISCELLANEOUS:</Text>
-          <View style={styles.listItem}>
-            <Text style={styles.listNumber}>•</Text>
-            <Text style={styles.listContent}>
-              You have been appointed on the basis of the particulars submitted by you. If at any time, it emerges that such particulars were false or incorrect or that any material or relevant information has been suppressed, your appointment would be liable to be terminated.
-            </Text>
-          </View>
-          <View style={styles.listItem}>
-            <Text style={styles.listNumber}>•</Text>
-            <Text style={styles.listContent}>
-              This agreement constitutes the entire understanding between the parties relating to your employment with the Company.
-            </Text>
-          </View>
-          <View style={styles.listItem}>
-            <Text style={styles.listNumber}>•</Text>
-            <Text style={styles.listContent}>
-              No waiver of any breach of the terms and conditions shall be a waiver of any other or subsequent breach of the same or any other clause contained herein.
-            </Text>
-          </View>
-          <View style={styles.listItem}>
-            <Text style={styles.listNumber}>•</Text>
-            <Text style={styles.listContent}>
-              This Agreement, the Annexure and any other documents referred to herein constitute the whole agreement between the parties and supersede any previous arrangement or agreement, whether written or oral.
-            </Text>
-          </View>
-          <View style={styles.listItem}>
-            <Text style={styles.listNumber}>•</Text>
-            <Text style={styles.listContent}>
-              If any provision of this Agreement is held by any court to be void or unenforceable, such provision shall be modified or eliminated, but the remaining provisions shall remain in full force and effect.
-            </Text>
-          </View>
-          <View style={styles.listItem}>
-            <Text style={styles.listNumber}>•</Text>
-            <Text style={styles.listContent}>
-              This agreement shall be governed by and construed in accordance with the Laws in force in India and both the parties hereby agree to the exclusive jurisdiction of the courts at Noida, Uttar Pradesh.
-            </Text>
-          </View>
+          <Text style={styles.text}>
+            [Content for this section should be dynamically generated based on the selected HR document template.]
+          </Text>
         </View>
 
         <View style={styles.section}>
@@ -491,69 +436,26 @@ export function LongFormTemplate({ letterContent }: LongFormTemplateProps) {
       <Page size="A4" style={styles.page}>
         <LetterHeader letterhead={letterheadData} />
         <AnnexureA salaryBreakdown={annexure.table} candidateName={to} />
-
-        {/* Additional notes */}
-        <View style={{ marginTop: 20 }}>
-          <Text style={{ fontSize: 10, fontFamily: 'Helvetica-Bold', color: '#E55300', marginBottom: 10 }}>
-            Conveyance charges will be 4Rs /km for the official meetings.
-          </Text>
-          <View style={styles.listItem}>
-            <Text style={styles.listNumber}>•</Text>
-            <Text style={styles.listContent}>
-              Fixed Salary: ₹{Math.round(annexure.table.reduce((sum: number, item: any) => sum + (item.perMonth || 0), 0)).toLocaleString('en-IN')} per month
-            </Text>
-          </View>
-          <View style={styles.listItem}>
-            <Text style={styles.listNumber}>•</Text>
-            <Text style={styles.listContent}>
-              In addition to the above salary, you will also be eligible for performance-based incentives depending on your performance and overall contribution to the project.
-            </Text>
-          </View>
-        </View>
-
         <PageFooter letterhead={letterheadData} />
       </Page>
 
-      {/* Page 11: Annexure B - KRA (only if KRA details exist) with Signature and Acknowledgement */}
-      {kraDetails.length > 0 && (
-        <Page size="A4" style={styles.page}>
-          <LetterHeader letterhead={letterheadData} />
-          <AnnexureB
-            designation={designationText}
-            kraDetails={kraDetails}
-          />
-          <PageFooter letterhead={letterheadData} />
-        </Page>
-      )}
-
-      {/* Final Page: Signature and Acknowledgement */}
+      {/* Final Page: Acknowledgement */}
       <Page size="A4" style={styles.page}>
         <LetterHeader letterhead={letterheadData} />
-
-        {/* HR Signature Section */}
-        <View style={{ marginTop: 20 }}>
-          <Text style={{ fontSize: 11, fontFamily: 'Helvetica-Bold', marginBottom: 15 }}>For Phoneme Solutions Pvt. Ltd.</Text>
-
-          <Text style={{ fontSize: 11, fontFamily: 'Helvetica-Bold', textDecoration: 'underline', marginBottom: 5 }}>
-            {(signatory?.name || signature.name).toUpperCase()}
-          </Text>
-
-          {signatory?.signature && signatory.signature.startsWith('data:') ? (
-            <View style={{ marginBottom: 5, height: 40 }}>
-              {/* Signature placeholder */}
-            </View>
-          ) : (
-            <View style={{ marginTop: 10, marginBottom: 10 }}>
-              <Text style={{ fontFamily: 'Helvetica-Oblique', fontSize: 14 }}>{signatory?.name || signature.name}</Text>
-            </View>
-          )}
-
-          <Text style={{ fontSize: 10, marginBottom: 40 }}>{signatory?.position || signature.title}</Text>
-        </View>
 
         {/* Acknowledgement */}
         <AcknowledgementSection candidateName={to} />
 
+        <PageFooter letterhead={letterheadData} />
+      </Page>
+      
+      {/* Page 11: Annexure B - KRA */}
+      <Page size="A4" style={styles.page}>
+        <LetterHeader letterhead={letterheadData} />
+        <AnnexureB
+          designation={designationText}
+          kraDetails={kraDetails}
+        />
         <PageFooter letterhead={letterheadData} />
       </Page>
     </Document>

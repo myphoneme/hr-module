@@ -108,7 +108,12 @@ router.post('/callback', async (req: Request, res: Response): Promise<void> => {
     });
   } catch (error: any) {
     console.error('OAuth callback error:', error);
-    res.status(500).json({ error: error.message || 'Failed to connect Gmail' });
+    console.error('Full error details:', JSON.stringify(error.response?.data || error, null, 2));
+    const errorMessage = error.response?.data?.error_description
+      || error.response?.data?.error
+      || error.message
+      || 'Failed to connect Gmail';
+    res.status(500).json({ error: errorMessage, details: error.response?.data });
   }
 });
 

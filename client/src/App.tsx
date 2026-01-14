@@ -111,11 +111,6 @@ function App() {
     return <CompanyLetterManager onBack={() => setCurrentPage('tasks')} />;
   }
 
-  // Render signatory manager if selected (admin only)
-  if (currentPage === 'signatories' && isAdmin) {
-    return <SignatoryManager onBack={() => setCurrentPage('tasks')} />;
-  }
-
   // Render AI offer generator if selected (admin only)
   if (currentPage === 'ai-offer-generator' && isAdmin) {
     return <PromptOfferLetterGenerator onBack={() => setCurrentPage('tasks')} />;

@@ -254,6 +254,32 @@ export function useSubmitInterviewFeedback() {
   });
 }
 
+export function useUpdateInterview() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, updates }: { id: number; updates: Parameters<typeof recruitmentApi.updateInterview>[1] }) =>
+      recruitmentApi.updateInterview(id, updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.interviews });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.candidates });
+    },
+  });
+}
+
+export function useDeleteInterview() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: number) => recruitmentApi.deleteInterview(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.interviews });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.candidates });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.stats });
+    },
+  });
+}
+
 // Evaluation Hooks
 export function useEvaluations(candidate_id?: number) {
   return useQuery({
@@ -356,8 +382,125 @@ export function useAutomationSettings() {
   });
 }
 
+// =====================================================
+// INTEREST EMAIL WORKFLOW HOOKS
+// =====================================================
+
+// Send interest email to candidate
+export function useSendInterestEmail() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ candidateId, gmailConnectionId }: {
+      candidateId: number;
+      gmailConnectionId: number;
+    }) => recruitmentApi.sendInterestEmail(candidateId, gmailConnectionId),
+    onSuccess: (_, { candidateId }) => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.candidates });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.candidate(candidateId) });
+    },
+  });
+}
+
+// Update candidate interest details manually (by HR)
+export function useUpdateInterestDetails() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ candidateId, details }: {
+      candidateId: number;
+      details: recruitmentApi.InterestDetailsUpdate;
+    }) => recruitmentApi.updateInterestDetails(candidateId, details),
+    onSuccess: (_, { candidateId }) => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.candidates });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.candidate(candidateId) });
+    },
+  });
+}
+
+// Re-extract experience from resume
+export function useReExtractExperience() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (candidateId: number) => recruitmentApi.reExtractExperience(candidateId),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.candidates });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.candidate(result.candidate.id) });
+    },
+  });
+}
+
+// Batch send interest emails to multiple candidates
+export function useBatchSendInterestEmails() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ candidateIds, gmailConnectionId }: {
+      candidateIds: number[];
+      gmailConnectionId: number;
+    }) => recruitmentApi.batchSendInterestEmails(candidateIds, gmailConnectionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.candidates });
+    },
+  });
+}
+
+// Send candidates for head person review
+export function useSendHeadReview() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: {
+      vacancy_id: number;
+      candidate_ids: number[];
+      reviewer_emails: recruitmentApi.ReviewerEmail[];
+      gmail_connection_id?: number;
+    }) => recruitmentApi.sendHeadReview(params),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.candidates });
+    },
+  });
+}
+
+// Send interview invitation email
+export function useSendInterviewInvite() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: recruitmentApi.SendInterviewInviteParams) =>
+      recruitmentApi.sendInterviewInvite(params),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.interviews });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.candidates });
+    },
+  });
+}
+
+// Batch send interview invitation emails
+export function useBatchSendInterviewInvites() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: {
+      interview_ids: number[];
+      gmail_connection_id: number;
+      additional_interviewers?: string[];
+      custom_message?: string;
+    }) => recruitmentApi.batchSendInterviewInvites(params),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.interviews });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.candidates });
+    },
+  });
+}
+
 // Export types
 export type { Vacancy, Candidate, Interview, CandidateEvaluation, RecruitmentStats, InterviewQuestion };
 export type { AutoScreeningResult, InterviewScoreResult, AutoOfferResult, WorkflowStatus, AutomationSettings } from '../api/recruitment';
 export type { VacancyChatMessage, ExtractedVacancyData, VacancyChatResponse, GeneratedJD } from '../api/recruitment';
 export type { ScreenedCandidate, ResumeScreeningResult } from '../api/recruitment';
+export type { SendInterviewInviteParams, SendInterviewInviteResult } from '../api/recruitment';
+export type { BatchSendInterestEmailsResult } from '../api/recruitment';
+export type { ReExtractExperienceResult } from '../api/recruitment';
+export type { ReviewerEmail, SendHeadReviewResult } from '../api/recruitment';

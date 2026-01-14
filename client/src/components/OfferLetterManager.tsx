@@ -72,6 +72,18 @@ export default function OfferLetterManager({ onBack }: OfferLetterManagerProps =
       if (!Array.isArray(salaryBreakdown)) {
         salaryBreakdown = [];
       }
+      
+      let kraDetails = editingLetter.kra_details;
+      if (typeof kraDetails === 'string') {
+        try {
+          kraDetails = JSON.parse(kraDetails);
+        } catch {
+          kraDetails = [];
+        }
+      }
+      if (!Array.isArray(kraDetails)) {
+        kraDetails = [];
+      }
 
       setEditedData({
         candidate_name: editingLetter.candidate_name,
@@ -80,6 +92,7 @@ export default function OfferLetterManager({ onBack }: OfferLetterManagerProps =
         joining_date: editingLetter.joining_date,
         annual_ctc: editingLetter.annual_ctc,
         salary_breakdown: salaryBreakdown,
+        kra_details: kraDetails,
         joining_bonus: editingLetter.joining_bonus,
         offer_valid_till: editingLetter.offer_valid_till,
         hr_manager_name: editingLetter.hr_manager_name,
@@ -159,6 +172,9 @@ export default function OfferLetterManager({ onBack }: OfferLetterManagerProps =
 
   const handleView = async (id: number) => {
     try {
+      if (viewMode === 'edit' && editingLetter && editedData) {
+        await updateOfferLetter(editingLetter.id, editedData);
+      }
       const content = await generateOfferLetter(id);
       setViewingContent(content);
       setViewMode('preview');
@@ -185,6 +201,9 @@ export default function OfferLetterManager({ onBack }: OfferLetterManagerProps =
   const handleDownload = async (id: number, candidateName: string) => {
     try {
       setDownloadingId(id);
+      if (viewMode === 'edit' && editingLetter && editedData) {
+        await updateOfferLetter(editingLetter.id, editedData);
+      }
       const content = await generateOfferLetter(id);
 
       // Generate PDF blob
@@ -248,6 +267,25 @@ export default function OfferLetterManager({ onBack }: OfferLetterManagerProps =
     const newBreakdown = editedData.salary_breakdown.filter((_, i) => i !== index);
     const totalAnnual = newBreakdown.reduce((sum, item) => sum + (item.annual || 0), 0);
     setEditedData({ ...editedData, salary_breakdown: newBreakdown, annual_ctc: totalAnnual });
+  };
+
+  const updateKra = (index: number, value: string) => {
+    if (!editedData || !editedData.kra_details) return;
+    const newKras = [...editedData.kra_details];
+    newKras[index] = { responsibility: value };
+    setEditedData({ ...editedData, kra_details: newKras });
+  };
+
+  const addKra = () => {
+    if (!editedData) return;
+    const newKras = [...(editedData.kra_details || []), { responsibility: 'New Responsibility' }];
+    setEditedData({ ...editedData, kra_details: newKras });
+  };
+
+  const removeKra = (index: number) => {
+    if (!editedData || !editedData.kra_details) return;
+    const newKras = editedData.kra_details.filter((_, i) => i !== index);
+    setEditedData({ ...editedData, kra_details: newKras });
   };
 
   const formatDate = (dateStr: string) => {
@@ -641,6 +679,42 @@ export default function OfferLetterManager({ onBack }: OfferLetterManagerProps =
                 </div>
               </div>
 
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border dark:border-gray-700 p-6">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                  <svg className="w-5 h-5 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                  </svg>
+                  Key Responsibility Areas (Annexure B)
+                </h3>
+                <div className="space-y-3">
+                  {(editedData.kra_details || []).map((kra, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <textarea
+                        value={kra.responsibility}
+                        onChange={(e) => updateKra(index, e.target.value)}
+                        rows={2}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-orange-500"
+                        placeholder={`Responsibility ${index + 1}`}
+                      />
+                      <button
+                        onClick={() => removeKra(index)}
+                        className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-full"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    onClick={addKra}
+                    className="w-full py-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 hover:border-teal-500 hover:text-teal-500 transition-colors"
+                  >
+                    + Add Responsibility
+                  </button>
+                </div>
+              </div>
+
               {/* Action Buttons */}
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border dark:border-gray-700 p-6">
                 <div className="flex gap-4">
@@ -650,6 +724,14 @@ export default function OfferLetterManager({ onBack }: OfferLetterManagerProps =
                   >
                     Cancel
                   </button>
+                  {!isNewLetter && (
+                    <button
+                      onClick={() => handleView(editingLetter.id)}
+                      className="flex-1 px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-medium rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+                    >
+                      Preview
+                    </button>
+                  )}
                   <button
                     onClick={isNewLetter ? handleCreate : handleUpdate}
                     disabled={isCreating || !editedData.candidate_name || !editedData.designation || !editedData.joining_date || !editedData.candidate_address || !editedData.signatory_id || !editedData.secondary_signatory_id}

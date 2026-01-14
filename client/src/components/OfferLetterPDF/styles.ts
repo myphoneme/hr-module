@@ -270,7 +270,6 @@ export const styles = StyleSheet.create({
   },
 
   tableTotal: {
-    backgroundColor: '#F3F4F6',
   },
 
   // Signature section

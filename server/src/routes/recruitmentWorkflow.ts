@@ -331,7 +331,7 @@ Return as JSON with this structure:
 }`;
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
       temperature: 0.7,
@@ -531,6 +531,44 @@ router.post('/naukri/search/:vacancyId', async (req: Request, res: Response): Pr
 
       const data = await response.json();
 
+      // Helper function to parse experience string properly
+      const parseExperience = (expStr: string | undefined): number => {
+        if (!expStr) return 0;
+
+        const str = expStr.toLowerCase();
+        let years = 0;
+        let months = 0;
+
+        // Match patterns like "X years" or "X yrs" or "X year"
+        const yearMatch = str.match(/(\d+\.?\d*)\s*(years?|yrs?)/i);
+        if (yearMatch) {
+          years = parseFloat(yearMatch[1]) || 0;
+        }
+
+        // Match patterns like "X months" or "X mos" or "X month"
+        const monthMatch = str.match(/(\d+\.?\d*)\s*(months?|mos?)/i);
+        if (monthMatch) {
+          months = parseFloat(monthMatch[1]) || 0;
+        }
+
+        // If no pattern matched, try to parse as a plain number (assume years)
+        if (years === 0 && months === 0) {
+          const plainNum = parseFloat(str.replace(/[^0-9.]/g, ''));
+          if (!isNaN(plainNum)) {
+            // If the number is >= 12, assume it's months
+            if (plainNum >= 12) {
+              months = plainNum;
+            } else {
+              years = plainNum;
+            }
+          }
+        }
+
+        // Convert to years (round to 1 decimal)
+        const totalYears = years + (months / 12);
+        return Math.round(totalYears * 10) / 10;
+      };
+
       // Transform candidates to match our format
       const candidates = (data.candidates || []).map((c: any, index: number) => ({
         profile_id: `naukri_${Date.now()}_${index}`,
@@ -541,7 +579,7 @@ router.post('/naukri/search/:vacancyId', async (req: Request, res: Response): Pr
         phone: c.phone || null,
         current_designation: c.title || c.designation || null,
         current_company: c.company || null,
-        experience_years: parseFloat(c.experience?.replace(/[^0-9.]/g, '')) || 0,
+        experience_years: parseExperience(c.experience),
         location: c.location || null,
         skills: c.skills || [],
         current_salary: null,
@@ -658,7 +696,7 @@ Example format:
 }`;
 
           const response = await openai.chat.completions.create({
-            model: 'gpt-4o',
+            model: 'gpt-4o-mini',
             messages: [{ role: 'user', content: prompt }],
             response_format: { type: 'json_object' },
             temperature: 0.3,
@@ -989,7 +1027,7 @@ Return JSON:
 }`;
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
       temperature: 0.3,
@@ -1483,7 +1521,7 @@ IMPORTANT:
 - Mark matched=true if the skill appears in JD requirements (case-insensitive match)`;
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
       temperature: 0.3,
@@ -1579,7 +1617,7 @@ Return JSON with skill_experience array where each skill has estimated years and
 }`;
 
         const response = await openai.chat.completions.create({
-          model: 'gpt-4o',
+          model: 'gpt-4o-mini',
           messages: [{ role: 'user', content: prompt }],
           response_format: { type: 'json_object' },
           temperature: 0.3,

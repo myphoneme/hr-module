@@ -234,7 +234,7 @@ export function AnnexureA({ salaryBreakdown, candidateName }: AnnexureAProps) {
 
   return (
     <View>
-      <Text style={styles.annexureTitle}>Annexure A</Text>
+      <Text style={styles.annexureTitle}>ANNEXURE- A</Text>
       <Text style={styles.annexureSubtitle}>Salary Break Up</Text>
       <Text style={styles.textBold}>Candidate Name: {candidateName}</Text>
 
@@ -242,7 +242,7 @@ export function AnnexureA({ salaryBreakdown, candidateName }: AnnexureAProps) {
       <View style={styles.table}>
         {/* Header Row */}
         <View style={[styles.tableRow, styles.tableHeader]}>
-          <Text style={styles.tableCellHeader}>Component</Text>
+          <Text style={styles.tableCellHeader}>Components</Text>
           <Text style={styles.tableCellHeader}>Per Month (in Rs.)</Text>
           <Text style={styles.tableCellHeaderLast}>Annual (in Rs.)</Text>
         </View>
@@ -275,15 +275,15 @@ export function AnnexureA({ salaryBreakdown, candidateName }: AnnexureAProps) {
 
         {/* Total Row */}
         {salaryBreakdown.length > 0 && (
-          <View style={[styles.tableRowLast, styles.tableTotal]}>
-            <Text style={styles.tableCellBold}>Total</Text>
+          <View style={[styles.tableRow, styles.tableTotal]}>
+            <Text style={styles.tableCellBold}>Fixed Salary (Total)</Text>
             <Text style={[styles.tableCellBold, { textAlign: 'right' }]}>
               {totalPerMonth.toLocaleString('en-IN', {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
             </Text>
-            <Text style={[styles.tableCellBoldLast, { textAlign: 'right' }]}>
+            <Text style={[styles.tableCellBold, { textAlign: 'right' }]}>
               {totalAnnual.toLocaleString('en-IN', {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
@@ -292,7 +292,23 @@ export function AnnexureA({ salaryBreakdown, candidateName }: AnnexureAProps) {
           </View>
         )}
       </View>
-
+      <View style={{ marginTop: 20 }}>
+        <Text style={{ fontSize: 10, fontFamily: 'Helvetica-Bold', color: '#000000', marginBottom: 10 }}>
+          Conveyance charges will be 4Rs /km for the official meetings.
+        </Text>
+        <View style={styles.listItem}>
+          <Text style={styles.listNumber}>•</Text>
+          <Text style={styles.listContent}>
+            Fixed Salary: ₹{totalPerMonth.toLocaleString('en-IN')} per month
+          </Text>
+        </View>
+        <View style={styles.listItem}>
+          <Text style={styles.listNumber}>•</Text>
+          <Text style={styles.listContent}>
+            In addition to the above salary, you will also be eligible for performance-based incentives depending on your performance and overall contribution to the project.
+          </Text>
+        </View>
+      </View>
     </View>
   );
 }

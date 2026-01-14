@@ -239,6 +239,12 @@ export function HRDocumentsManager() {
                       </span>
                     )}
                     <button
+                      onClick={() => window.open(`http://localhost:3001/api/rag/documents/${doc.id}/download`, '_blank')}
+                      className="text-blue-600 hover:text-blue-800 text-sm px-2 py-1 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
+                    >
+                      View
+                    </button>
+                    <button
                       onClick={() => handleDelete(doc.id)}
                       className="text-red-600 hover:text-red-800 text-sm px-2 py-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
                     >

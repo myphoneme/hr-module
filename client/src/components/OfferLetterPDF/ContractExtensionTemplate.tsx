@@ -186,14 +186,6 @@ export function ContractExtensionTemplate({ letterContent }: ContractExtensionTe
           <LetterHeader letterhead={letterheadData} />
           <AnnexureA salaryBreakdown={annexure.table} candidateName={to} />
 
-          {/* Director Signature - MANDATORY on last page */}
-          <SecondarySignatureSection
-            signatoryName={signatory?.name || 'Authorized Signatory'}
-            signatoryPosition={signatory?.position || 'Director'}
-            signatorySignature={signatory?.signature}
-            signatoryStamp={signatory?.stamp}
-          />
-
           <PageFooter letterhead={letterheadData} />
         </Page>
       )}

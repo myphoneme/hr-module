@@ -302,7 +302,7 @@ ${text}`;
 
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'You are an HR document analysis expert. Extract structured information from offer letters. Always return valid JSON.' },
         { role: 'user', content: prompt }
@@ -388,6 +388,114 @@ ${text}`;
 }
 
 /**
+ * Extract ALL sections with their complete content from offer letter
+ * This preserves the full text of each section for use in PDF generation
+ */
+async function extractAllSectionsContent(text: string): Promise<any[]> {
+  // Split into smaller chunks if text is very long (for token limits)
+  const maxChunkSize = 12000; // Safe limit for GPT-4o-mini context
+  const chunks: string[] = [];
+
+  if (text.length > maxChunkSize) {
+    // Split by section markers or paragraphs
+    const parts = text.split(/(?=\d+\.\s+[A-Z]|\n\n(?=[A-Z]))/);
+    let currentChunk = '';
+    for (const part of parts) {
+      if ((currentChunk + part).length > maxChunkSize && currentChunk) {
+        chunks.push(currentChunk);
+        currentChunk = part;
+      } else {
+        currentChunk += part;
+      }
+    }
+    if (currentChunk) chunks.push(currentChunk);
+  } else {
+    chunks.push(text);
+  }
+
+  const allSections: any[] = [];
+
+  for (const chunk of chunks) {
+    const prompt = `You are an expert document analyst. Extract ALL sections from this offer letter document with their COMPLETE, EXACT content.
+
+For each section, extract:
+1. section_number - The section number (e.g., "1", "2", "3.1", etc.) or null if unnumbered
+2. section_title - The section heading/title exactly as it appears
+3. section_content - The COMPLETE, EXACT text content of the section (preserve all paragraphs, bullets, sub-points)
+4. has_subsections - true if this section has numbered/lettered sub-items
+5. subsections - Array of sub-items if present, each with: {letter/number, content}
+
+Return a JSON object with this structure:
+{
+  "sections": [
+    {
+      "section_number": "1",
+      "section_title": "COMMENCEMENT OF APPOINTMENT",
+      "section_content": "The complete exact text...",
+      "has_subsections": false,
+      "subsections": []
+    },
+    {
+      "section_number": "2",
+      "section_title": "TERMS AND CONDITIONS",
+      "section_content": "Main section text...",
+      "has_subsections": true,
+      "subsections": [
+        {"marker": "a", "content": "First sub-point..."},
+        {"marker": "b", "content": "Second sub-point..."}
+      ]
+    }
+  ]
+}
+
+IMPORTANT:
+1. Extract EVERY section from the document - do not skip any
+2. Preserve the EXACT, COMPLETE text - do not summarize or truncate
+3. Include ALL sub-points, bullets, and nested content
+4. Keep all punctuation, formatting markers, and special characters
+5. Replace specific candidate names/dates with {{placeholders}} like {{candidate_name}}, {{joining_date}}, {{annual_ctc}}, {{designation}}, {{working_location}}, {{company_name}}, {{probation_period}}, {{notice_period}}, {{offer_valid_till}}
+
+Document text:
+${chunk}`;
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an expert document analyst. Extract complete section content from offer letters. Always return valid JSON with all sections preserved exactly.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.1,
+        max_tokens: 8000,
+        response_format: { type: 'json_object' },
+      });
+
+      const content = response.choices[0].message.content;
+      if (content) {
+        const parsed = JSON.parse(content);
+        if (parsed.sections && Array.isArray(parsed.sections)) {
+          allSections.push(...parsed.sections);
+        }
+      }
+    } catch (error) {
+      console.error('Error extracting sections from chunk:', error);
+    }
+  }
+
+  // Deduplicate sections by title (in case of overlap between chunks)
+  const seenTitles = new Set<string>();
+  const uniqueSections = allSections.filter(section => {
+    const key = section.section_title?.toLowerCase().trim();
+    if (seenTitles.has(key)) return false;
+    seenTitles.add(key);
+    return true;
+  });
+
+  console.log(`Extracted ${uniqueSections.length} unique sections from document`);
+  return uniqueSections;
+}
+
+/**
  * Extract complete template structure from offer letter using GPT-4o
  * This function analyzes the document to extract its complete formatting and structure
  */
@@ -462,7 +570,7 @@ ${text}`;
 
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'You are an expert document template analyst. Extract complete template structures with exact formatting and language patterns. Always return valid JSON.' },
         { role: 'user', content: prompt }
@@ -487,7 +595,8 @@ ${text}`;
 async function createOrUpdateTemplateProfile(
   structure: any,
   documentId: number,
-  userId: number
+  userId: number,
+  allSectionsContent?: any[]
 ): Promise<number | null> {
   try {
     // Check if a similar template already exists
@@ -516,13 +625,25 @@ async function createOrUpdateTemplateProfile(
         sourceIds.push(documentId);
       }
 
-      db.prepare(`
-        UPDATE rag_template_profiles
-        SET source_document_ids = ?,
-            usage_count = usage_count + 1,
-            updatedAt = datetime('now')
-        WHERE id = ?
-      `).run(JSON.stringify(sourceIds), matchedProfile.id);
+      // Also update all_sections_content if provided (to get the latest complete content)
+      if (allSectionsContent && allSectionsContent.length > 0) {
+        db.prepare(`
+          UPDATE rag_template_profiles
+          SET source_document_ids = ?,
+              usage_count = usage_count + 1,
+              all_sections_content = ?,
+              updatedAt = datetime('now')
+          WHERE id = ?
+        `).run(JSON.stringify(sourceIds), JSON.stringify(allSectionsContent), matchedProfile.id);
+      } else {
+        db.prepare(`
+          UPDATE rag_template_profiles
+          SET source_document_ids = ?,
+              usage_count = usage_count + 1,
+              updatedAt = datetime('now')
+          WHERE id = ?
+        `).run(JSON.stringify(sourceIds), matchedProfile.id);
+      }
 
       // Link document to template
       db.prepare(`
@@ -545,8 +666,9 @@ async function createOrUpdateTemplateProfile(
         bullet_point_style, probation_clause, notice_period_clause,
         confidentiality_clause, termination_clause, general_terms_clause,
         benefits_section, working_hours_clause, leave_policy_clause,
-        full_structure, designation_types, experience_levels, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        full_structure, designation_types, experience_levels, created_by,
+        all_sections_content
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       structure.profile_name || 'Unnamed Template',
       structure.profile_description || null,
@@ -579,7 +701,8 @@ async function createOrUpdateTemplateProfile(
       JSON.stringify(structure),
       structure.designation_suitability?.designation_types ? JSON.stringify(structure.designation_suitability.designation_types) : null,
       structure.designation_suitability?.experience_levels ? JSON.stringify(structure.designation_suitability.experience_levels) : null,
-      userId
+      userId,
+      allSectionsContent ? JSON.stringify(allSectionsContent) : null
     );
 
     const profileId = result.lastInsertRowid as number;
@@ -842,7 +965,7 @@ CRITICAL RULES:
 
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [
         {
           role: 'system',
@@ -1087,7 +1210,7 @@ Resume text:
 ${text}`;
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-4o-mini',
     messages: [
       { role: 'system', content: 'You are a resume parsing expert. Extract structured information from resumes. Always return valid JSON.' },
       { role: 'user', content: prompt }
@@ -1179,7 +1302,7 @@ IMPORTANT:
 5. Include 3-5 relevant KRAs based on the designation`;
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-4o-mini',
     messages: [
       { role: 'system', content: 'You are an HR expert specializing in creating offer letters. Generate structured offer letter data based on candidate information and company standards.' },
       { role: 'user', content: prompt }
@@ -1286,8 +1409,14 @@ router.post('/upload-training', authenticateToken, requireAdmin, uploadTraining.
         // Extract template structure and create/update profile
         console.log(`Extracting template structure for document ${documentId}...`);
         const templateStructure = await extractTemplateStructure(extractedText, documentId);
+
+        // Extract ALL sections content for complete document preservation
+        console.log(`Extracting all sections content for document ${documentId}...`);
+        const allSectionsContent = await extractAllSectionsContent(extractedText);
+        console.log(`Extracted ${allSectionsContent.length} sections from document ${documentId}`);
+
         if (templateStructure) {
-          const profileId = await createOrUpdateTemplateProfile(templateStructure, documentId, userId);
+          const profileId = await createOrUpdateTemplateProfile(templateStructure, documentId, userId, allSectionsContent);
           console.log(`Template profile ${profileId} created/updated for document ${documentId}`);
         }
 
@@ -1374,6 +1503,38 @@ router.get('/documents/:id', authenticateToken, requireAdmin, (req: Request, res
   }
 });
 
+// Download/view training document file
+router.get('/documents/:id/download', authenticateToken, requireAdmin, (req: Request, res: Response): void => {
+  try {
+    const { id } = req.params;
+    const document = db.prepare(`
+      SELECT * FROM rag_documents WHERE id = ? AND isActive = 1
+    `).get(id) as RAGDocument | undefined;
+
+    if (!document) {
+      res.status(404).json({ error: 'Document not found' });
+      return;
+    }
+
+    // file_path is stored as absolute path, use directly
+    const filePath = path.isAbsolute(document.file_path)
+      ? document.file_path
+      : path.join(process.cwd(), document.file_path);
+
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: 'File not found on disk' });
+      return;
+    }
+
+    res.setHeader('Content-Disposition', `inline; filename="${document.original_name}"`);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.sendFile(filePath);
+  } catch (error) {
+    console.error('Error downloading document:', error);
+    res.status(500).json({ error: 'Failed to download document' });
+  }
+});
+
 // Delete training document
 router.delete('/documents/:id', authenticateToken, requireAdmin, (req: Request, res: Response): void => {
   try {
@@ -1395,6 +1556,75 @@ router.delete('/documents/:id', authenticateToken, requireAdmin, (req: Request, 
   } catch (error) {
     console.error('Error deleting document:', error);
     res.status(500).json({ error: 'Failed to delete document' });
+  }
+});
+
+// Re-process all documents to extract template profiles
+router.post('/reprocess-templates', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      res.status(500).json({ error: 'AI service not configured. Set OPENAI_API_KEY environment variable.' });
+      return;
+    }
+
+    const userId = req.user!.userId;
+
+    // Get all completed documents with extracted text (especially offer letters)
+    const documents = db.prepare(`
+      SELECT id, original_name, extracted_text, uploaded_by
+      FROM rag_documents
+      WHERE isActive = 1 AND status = 'completed' AND extracted_text IS NOT NULL
+      AND (
+        LOWER(original_name) LIKE '%offer%'
+        OR LOWER(original_name) LIKE '%letter%'
+        OR LOWER(original_name) LIKE '%appointment%'
+      )
+    `).all() as { id: number; original_name: string; extracted_text: string; uploaded_by: number }[];
+
+    if (documents.length === 0) {
+      res.status(404).json({ error: 'No offer letter documents found to process' });
+      return;
+    }
+
+    console.log(`Re-processing ${documents.length} documents for template extraction...`);
+
+    const results: { id: number; name: string; success: boolean; profileId?: number; error?: string }[] = [];
+
+    for (const doc of documents) {
+      try {
+        console.log(`Processing document ${doc.id}: ${doc.original_name}`);
+
+        // Analyze offer letter patterns
+        const analysis = await analyzeOfferLetter(doc.extracted_text, doc.id);
+
+        // Extract template structure
+        const templateStructure = await extractTemplateStructure(doc.extracted_text, doc.id);
+
+        // Extract ALL sections content for complete document preservation
+        const allSectionsContent = await extractAllSectionsContent(doc.extracted_text);
+        console.log(`Extracted ${allSectionsContent.length} sections from document ${doc.id}`);
+
+        if (templateStructure) {
+          const profileId = await createOrUpdateTemplateProfile(templateStructure, doc.id, doc.uploaded_by || userId, allSectionsContent);
+          results.push({ id: doc.id, name: doc.original_name, success: true, profileId });
+          console.log(`Template profile ${profileId} created for document ${doc.id}`);
+        } else {
+          results.push({ id: doc.id, name: doc.original_name, success: false, error: 'Failed to extract template structure' });
+        }
+      } catch (err: any) {
+        console.error(`Error processing document ${doc.id}:`, err);
+        results.push({ id: doc.id, name: doc.original_name, success: false, error: err.message });
+      }
+    }
+
+    const successful = results.filter(r => r.success).length;
+    res.json({
+      message: `Processed ${documents.length} documents. ${successful} templates created/updated.`,
+      results
+    });
+  } catch (error: any) {
+    console.error('Error re-processing templates:', error);
+    res.status(500).json({ error: 'Failed to re-process templates', details: error.message });
   }
 });
 
@@ -1608,6 +1838,52 @@ router.post('/generate', authenticateToken, async (req: Request, res: Response):
     res.status(500).json({
       success: false,
       error: 'Failed to generate offer letter',
+      details: error.message
+    });
+  }
+});
+
+// Generate offer letter from resume using a specific template
+router.post('/generate-with-template', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      res.status(500).json({ error: 'AI service not configured. Set OPENAI_API_KEY environment variable.' });
+      return;
+    }
+
+    const config = req.body as RAGGenerateRequest & { template_profile_id?: number };
+
+    if (!config.resume_id) {
+      res.status(400).json({ error: 'resume_id is required' });
+      return;
+    }
+
+    // Get resume extraction
+    const resume = db.prepare('SELECT * FROM resume_extractions WHERE id = ? AND isActive = 1').get(config.resume_id) as ResumeExtraction | undefined;
+    if (!resume) {
+      res.status(404).json({ error: 'Resume not found' });
+      return;
+    }
+
+    // Find template profile
+    const templateProfile = config.template_profile_id
+      ? db.prepare('SELECT * FROM rag_template_profiles WHERE id = ?').get(config.template_profile_id) as TemplateProfile | undefined
+      : findBestTemplateProfile(resume.designation || 'Default', resume.experience_years || 0);
+
+    if (!templateProfile) {
+      res.status(404).json({ error: 'No suitable offer letter template found. Please upload more samples.' });
+      return;
+    }
+
+    // Generate offer letter data using the specific template
+    const result = await generateOfferLetterWithTemplate(resume, templateProfile, config);
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error generating offer letter with template:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate offer letter with template',
       details: error.message
     });
   }
@@ -1876,7 +2152,7 @@ IMPORTANT RULES:
 
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [
         {
           role: 'system',
@@ -2057,7 +2333,7 @@ SALARY CALCULATION RULES:
 - Sum of all components × 12 should equal annual_ctc`;
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'You are an expert HR assistant. Parse the HR prompt and generate accurate offer letter data. Always return valid JSON.' },
         { role: 'user', content: aiPrompt }
@@ -2559,7 +2835,7 @@ IMPORTANT:
 6. Detect template_type based on designation (Trainee/Junior = short, others = long)`;
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'You are an expert at extracting structured data from offer letters. Always return valid JSON. Be precise with salary calculations.' },
         { role: 'user', content: prompt }
@@ -2589,6 +2865,274 @@ IMPORTANT:
     res.status(500).json({
       success: false,
       error: 'Failed to extract offer letter details',
+      details: error.message
+    });
+  }
+});
+
+// ============ DIAGNOSTIC AND FIX ENDPOINTS ============
+
+// Set a template profile as default
+router.post('/set-default-template/:id', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    // Reset all to non-default
+    db.prepare(`UPDATE rag_template_profiles SET is_default = 0`).run();
+
+    // Set the specified one as default
+    db.prepare(`UPDATE rag_template_profiles SET is_default = 1 WHERE id = ?`).run(id);
+
+    const profile = db.prepare(`SELECT id, profile_name, is_default, all_sections_content FROM rag_template_profiles WHERE id = ?`).get(id) as any;
+
+    res.json({
+      success: true,
+      message: `Template profile ${id} set as default`,
+      profile: {
+        id: profile?.id,
+        name: profile?.profile_name,
+        is_default: profile?.is_default,
+        has_sections: !!profile?.all_sections_content,
+        sections_count: profile?.all_sections_content ? JSON.parse(profile.all_sections_content).length : 0
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Reprocess stuck documents
+router.post('/reprocess-stuck-documents', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  try {
+    console.log('=== Reprocessing Stuck Documents ===');
+
+    // Find documents stuck in processing
+    const stuckDocs = db.prepare(`
+      SELECT id, original_name, file_path
+      FROM rag_documents
+      WHERE status = 'processing' AND isActive = 1
+    `).all() as { id: number; original_name: string; file_path: string }[];
+
+    console.log(`Found ${stuckDocs.length} stuck documents`);
+
+    if (stuckDocs.length === 0) {
+      res.json({ success: true, message: 'No stuck documents found', processed: 0 });
+      return;
+    }
+
+    const results: { id: number; name: string; success: boolean; error?: string; text_length?: number }[] = [];
+
+    for (const doc of stuckDocs) {
+      try {
+        console.log(`Reprocessing document ${doc.id}: ${doc.original_name}`);
+
+        const filePath = path.join(process.cwd(), doc.file_path);
+
+        if (!fs.existsSync(filePath)) {
+          results.push({ id: doc.id, name: doc.original_name, success: false, error: 'File not found' });
+          db.prepare(`UPDATE rag_documents SET status = 'failed', error_message = 'File not found' WHERE id = ?`).run(doc.id);
+          continue;
+        }
+
+        // Extract text from PDF
+        const dataBuffer = fs.readFileSync(filePath);
+        const pdfData = await pdfParse(dataBuffer);
+        const extractedText = pdfData.text;
+
+        console.log(`Extracted ${extractedText.length} characters from ${doc.original_name}`);
+
+        if (extractedText.length < 10) {
+          results.push({ id: doc.id, name: doc.original_name, success: false, error: 'No text extracted (might be image-based PDF)' });
+          db.prepare(`UPDATE rag_documents SET status = 'failed', error_message = 'No text could be extracted' WHERE id = ?`).run(doc.id);
+          continue;
+        }
+
+        // Update document with extracted text
+        db.prepare(`
+          UPDATE rag_documents
+          SET status = 'completed', extracted_text = ?, updatedAt = datetime('now')
+          WHERE id = ?
+        `).run(extractedText, doc.id);
+
+        results.push({ id: doc.id, name: doc.original_name, success: true, text_length: extractedText.length });
+        console.log(`Successfully processed ${doc.original_name}`);
+
+      } catch (err: any) {
+        console.error(`Error processing ${doc.original_name}:`, err);
+        results.push({ id: doc.id, name: doc.original_name, success: false, error: err.message });
+        db.prepare(`UPDATE rag_documents SET status = 'failed', error_message = ? WHERE id = ?`).run(err.message, doc.id);
+      }
+    }
+
+    const successful = results.filter(r => r.success).length;
+    res.json({
+      success: true,
+      message: `Processed ${stuckDocs.length} documents. ${successful} successful.`,
+      results
+    });
+
+  } catch (error: any) {
+    console.error('Error reprocessing stuck documents:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Diagnose and fix template profile issues
+router.post('/fix-template-profiles', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  try {
+    console.log('=== Starting Template Profile Fix ===');
+
+    const { document_id } = req.body || {};
+
+    // Step 1: Check existing documents
+    const documents = db.prepare(`
+      SELECT id, original_name, extracted_text, status, LENGTH(extracted_text) as text_length
+      FROM rag_documents
+      WHERE isActive = 1 AND status = 'completed' AND extracted_text IS NOT NULL
+      ORDER BY LENGTH(extracted_text) DESC
+    `).all() as { id: number; original_name: string; extracted_text: string; status: string; text_length: number }[];
+
+    console.log(`Found ${documents.length} completed documents`);
+
+    if (documents.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'No completed documents found. Please upload an HR document first.',
+        diagnosis: {
+          documents_count: 0,
+          template_profiles_count: 0
+        }
+      });
+      return;
+    }
+
+    // Step 2: Check existing template profiles
+    const existingProfiles = db.prepare(`
+      SELECT id, profile_name, is_default, all_sections_content
+      FROM rag_template_profiles
+      WHERE isActive = 1
+    `).all() as { id: number; profile_name: string; is_default: number; all_sections_content: string | null }[];
+
+    console.log(`Found ${existingProfiles.length} template profiles`);
+
+    // Step 3: Select document - use specified document_id or the one with longest text (most likely offer letter)
+    let doc = documents[0]; // Default to longest text
+
+    if (document_id) {
+      const specified = documents.find(d => d.id === parseInt(document_id));
+      if (specified) {
+        doc = specified;
+      }
+    } else {
+      // Skip letterhead files, prefer offer letter documents
+      const offerLetterDoc = documents.find(d =>
+        !d.original_name.toLowerCase().includes('letterhead') &&
+        d.text_length > 1000
+      );
+      if (offerLetterDoc) {
+        doc = offerLetterDoc;
+      }
+    }
+
+    console.log(`Selected document: ${doc.original_name} (ID: ${doc.id}, text length: ${doc.extracted_text.length})`);
+    console.log('Available documents:', documents.map(d => `${d.id}: ${d.original_name} (${d.text_length} chars)`));
+
+    const allSections = await extractAllSectionsContent(doc.extracted_text);
+    console.log(`Extracted ${allSections.length} sections`);
+    console.log('Section titles:', allSections.map(s => s.section_title));
+
+    if (allSections.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'Failed to extract sections from document. Try specifying a different document_id.',
+        diagnosis: {
+          documents_count: documents.length,
+          template_profiles_count: existingProfiles.length,
+          document_used: doc.original_name,
+          document_id_used: doc.id,
+          extracted_sections: 0,
+          available_documents: documents.map(d => ({
+            id: d.id,
+            name: d.original_name,
+            text_length: d.text_length
+          }))
+        },
+        hint: 'Use: fetch("/api/rag/fix-template-profiles", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({document_id: YOUR_ID}), credentials:"include"}).then(r=>r.json()).then(console.log)'
+      });
+      return;
+    }
+
+    // Step 4: Create or update template profile
+    let profileId: number;
+
+    if (existingProfiles.length > 0) {
+      // Update the first profile and make it default
+      profileId = existingProfiles[0].id;
+      db.prepare(`
+        UPDATE rag_template_profiles
+        SET all_sections_content = ?,
+            is_default = 1,
+            updatedAt = datetime('now')
+        WHERE id = ?
+      `).run(JSON.stringify(allSections), profileId);
+
+      // Make sure only this one is default
+      db.prepare(`
+        UPDATE rag_template_profiles
+        SET is_default = 0
+        WHERE id != ?
+      `).run(profileId);
+
+      console.log(`Updated existing template profile ${profileId} with ${allSections.length} sections`);
+    } else {
+      // Create new default template profile
+      const result = db.prepare(`
+        INSERT INTO rag_template_profiles (
+          profile_name, profile_description, source_document_ids,
+          is_default, all_sections_content, created_by
+        ) VALUES (?, ?, ?, 1, ?, ?)
+      `).run(
+        'Default Offer Letter Template',
+        `Auto-generated from ${doc.original_name}`,
+        JSON.stringify([doc.id]),
+        JSON.stringify(allSections),
+        (req as any).user?.id || 1
+      );
+      profileId = result.lastInsertRowid as number;
+      console.log(`Created new default template profile ${profileId}`);
+    }
+
+    // Verify the fix
+    const updatedProfile = db.prepare(`
+      SELECT id, profile_name, is_default, all_sections_content
+      FROM rag_template_profiles
+      WHERE id = ?
+    `).get(profileId) as any;
+
+    const sectionsCount = updatedProfile.all_sections_content
+      ? JSON.parse(updatedProfile.all_sections_content).length
+      : 0;
+
+    res.json({
+      success: true,
+      message: `Successfully extracted ${allSections.length} sections and updated template profile`,
+      diagnosis: {
+        documents_count: documents.length,
+        document_used: doc.original_name,
+        document_text_length: doc.extracted_text.length,
+        template_profile_id: profileId,
+        template_profile_name: updatedProfile.profile_name,
+        is_default: updatedProfile.is_default === 1,
+        sections_count: sectionsCount,
+        section_titles: allSections.map(s => s.section_title)
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Error fixing template profiles:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fix template profiles',
       details: error.message
     });
   }
@@ -2706,6 +3250,92 @@ router.delete('/template-profiles/:id', authenticateToken, requireAdmin, (req: R
   } catch (error) {
     console.error('Error deleting template profile:', error);
     res.status(500).json({ error: 'Failed to delete template profile' });
+  }
+});
+
+// Re-extract all sections from a document and update the template profile
+router.post('/re-extract-sections/:documentId', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { documentId } = req.params;
+
+    // Get the document
+    const document = db.prepare(`
+      SELECT * FROM rag_documents WHERE id = ? AND isActive = 1 AND status = 'completed'
+    `).get(documentId) as RAGDocument | undefined;
+
+    if (!document) {
+      res.status(404).json({ error: 'Document not found or not processed yet' });
+      return;
+    }
+
+    if (!document.extracted_text) {
+      res.status(400).json({ error: 'Document has no extracted text' });
+      return;
+    }
+
+    console.log(`Re-extracting sections from document ${documentId}: ${document.original_name}`);
+    console.log(`Document text length: ${document.extracted_text.length} characters`);
+
+    // Extract ALL sections from the document
+    const allSections = await extractAllSectionsContent(document.extracted_text);
+    console.log(`Extracted ${allSections.length} sections from document`);
+
+    if (allSections.length === 0) {
+      res.status(400).json({ error: 'No sections could be extracted from document' });
+      return;
+    }
+
+    // Find the template profile linked to this document
+    const templateLink = db.prepare(`
+      SELECT template_profile_id FROM rag_document_templates WHERE document_id = ?
+    `).get(documentId) as { template_profile_id: number } | undefined;
+
+    if (templateLink) {
+      // Update the existing template profile
+      db.prepare(`
+        UPDATE rag_template_profiles
+        SET all_sections_content = ?, updatedAt = datetime('now')
+        WHERE id = ?
+      `).run(JSON.stringify(allSections), templateLink.template_profile_id);
+
+      console.log(`Updated template profile ${templateLink.template_profile_id} with ${allSections.length} sections`);
+
+      res.json({
+        success: true,
+        message: `Successfully extracted ${allSections.length} sections and updated template profile`,
+        template_profile_id: templateLink.template_profile_id,
+        sections_count: allSections.length,
+        section_titles: allSections.map(s => s.section_title)
+      });
+    } else {
+      // No template profile linked, create one or update default
+      const defaultProfile = db.prepare(`
+        SELECT * FROM rag_template_profiles WHERE is_default = 1 AND isActive = 1
+      `).get() as TemplateProfile | undefined;
+
+      if (defaultProfile) {
+        db.prepare(`
+          UPDATE rag_template_profiles
+          SET all_sections_content = ?, updatedAt = datetime('now')
+          WHERE id = ?
+        `).run(JSON.stringify(allSections), defaultProfile.id);
+
+        console.log(`Updated default template profile ${defaultProfile.id} with ${allSections.length} sections`);
+
+        res.json({
+          success: true,
+          message: `Successfully extracted ${allSections.length} sections and updated default template profile`,
+          template_profile_id: defaultProfile.id,
+          sections_count: allSections.length,
+          section_titles: allSections.map(s => s.section_title)
+        });
+      } else {
+        res.status(400).json({ error: 'No template profile found for this document' });
+      }
+    }
+  } catch (error: any) {
+    console.error('Error re-extracting sections:', error);
+    res.status(500).json({ error: 'Failed to re-extract sections', details: error.message });
   }
 });
 

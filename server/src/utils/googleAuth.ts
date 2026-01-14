@@ -6,11 +6,16 @@ const SCOPES = {
   gmail: [
     'https://www.googleapis.com/auth/gmail.readonly',
     'https://www.googleapis.com/auth/gmail.modify',
-    'https://www.googleapis.com/auth/gmail.labels'
+    'https://www.googleapis.com/auth/gmail.send',
+    'https://www.googleapis.com/auth/gmail.labels',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'openid'
   ],
   calendar: [
     'https://www.googleapis.com/auth/calendar.readonly',
-    'https://www.googleapis.com/auth/calendar.events'
+    'https://www.googleapis.com/auth/calendar.events',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'openid'
   ]
 };
 
@@ -63,21 +68,52 @@ export async function exchangeCodeForTokens(code: string, type: 'gmail' | 'calen
     ? (process.env.GOOGLE_CALENDAR_REDIRECT_URI || 'http://localhost:5173/auth/google/callback')
     : (process.env.GOOGLE_GMAIL_REDIRECT_URI || 'http://localhost:5173/auth/gmail/callback');
 
+  console.log('Exchanging code for tokens with redirect URI:', redirectUri);
+  console.log('Code (first 20 chars):', code.substring(0, 20) + '...');
+
   const oauth2Client = getOAuth2Client(redirectUri);
 
   const { tokens } = await oauth2Client.getToken(code);
+  console.log('Token exchange successful, got tokens:', {
+    hasAccessToken: !!tokens.access_token,
+    hasRefreshToken: !!tokens.refresh_token,
+    hasIdToken: !!tokens.id_token,
+    expiryDate: tokens.expiry_date
+  });
 
   if (!tokens.access_token || !tokens.refresh_token) {
     throw new Error('Failed to get tokens from Google');
   }
 
-  oauth2Client.setCredentials(tokens);
+  // Get email from id_token (JWT) instead of making a separate API call
+  let email: string | undefined;
 
-  // Get user email
-  const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
-  const userInfo = await oauth2.userinfo.get();
+  if (tokens.id_token) {
+    try {
+      // Decode the JWT payload (middle part)
+      const payload = tokens.id_token.split('.')[1];
+      const decoded = JSON.parse(Buffer.from(payload, 'base64').toString('utf-8'));
+      email = decoded.email;
+      console.log('Email extracted from id_token:', email);
+    } catch (e) {
+      console.error('Failed to decode id_token:', e);
+    }
+  }
 
-  if (!userInfo.data.email) {
+  // Fallback: try the userinfo API if id_token didn't work
+  if (!email) {
+    try {
+      oauth2Client.setCredentials(tokens);
+      const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+      const userInfo = await oauth2.userinfo.get();
+      email = userInfo.data.email || undefined;
+      console.log('Email from userinfo API:', email);
+    } catch (e) {
+      console.error('Userinfo API failed:', e);
+    }
+  }
+
+  if (!email) {
     throw new Error('Failed to get user email from Google');
   }
 
@@ -85,7 +121,7 @@ export async function exchangeCodeForTokens(code: string, type: 'gmail' | 'calen
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token,
     expiry_date: tokens.expiry_date || Date.now() + 3600000,
-    email: userInfo.data.email
+    email
   };
 }
 
@@ -104,7 +140,12 @@ export async function getAuthenticatedClient(connectionId: number, type: 'gmail'
     throw new Error(`${type === 'gmail' ? 'Gmail' : 'Calendar'} connection not found`);
   }
 
-  const oauth2Client = getOAuth2Client();
+  // Use the same redirect URI as when the token was obtained
+  const redirectUri = type === 'calendar'
+    ? (process.env.GOOGLE_CALENDAR_REDIRECT_URI || 'http://localhost:5173/auth/google/callback')
+    : (process.env.GOOGLE_GMAIL_REDIRECT_URI || 'http://localhost:5173/auth/gmail/callback');
+
+  const oauth2Client = getOAuth2Client(redirectUri);
   oauth2Client.setCredentials({
     access_token: connection.access_token,
     refresh_token: connection.refresh_token,

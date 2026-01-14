@@ -37,3 +37,4 @@ snapshots/
 *.sln
 *.sw?
 server/uploads/
+.gemini-clipboard/

@@ -12,8 +12,10 @@ import { InterviewManager } from './recruitment/InterviewManager';
 import { HRDocumentsManager } from './recruitment/HRDocumentsManager';
 import ResumeScreening from './recruitment/ResumeScreening';
 import OfferLetterTab from './recruitment/OfferLetterTab';
+import { GmailConnectionManager } from './automation/GmailConnectionManager';
+import { SignatoryManager } from './SignatoryManager';
 
-type TabType = 'dashboard' | 'vacancies' | 'resume-screening' | 'candidates' | 'interviews' | 'offer-letters' | 'documents';
+type TabType = 'dashboard' | 'vacancies' | 'resume-screening' | 'candidates' | 'interviews' | 'offer-letters' | 'documents' | 'settings' | 'signatories';
 
 interface RecruitmentHubProps {
   onBack?: () => void;
@@ -41,6 +43,8 @@ function RecruitmentHubContent({ onBack }: RecruitmentHubProps) {
     { id: 'interviews' as TabType, label: 'Interviews', icon: '🗓️', count: mockInterviews.length || null },
     { id: 'offer-letters' as TabType, label: 'Offer Letters', icon: '📝', count: null },
     { id: 'documents' as TabType, label: 'HR Docs', icon: '📁', count: null },
+    { id: 'settings' as TabType, label: 'Settings', icon: '⚙️', count: null },
+    { id: 'signatories' as TabType, label: 'Signatories', icon: '✍️', count: null },
   ];
 
   return (
@@ -111,6 +115,20 @@ function RecruitmentHubContent({ onBack }: RecruitmentHubProps) {
         {activeTab === 'interviews' && <InterviewManager />}
         {activeTab === 'offer-letters' && <OfferLetterTab />}
         {activeTab === 'documents' && <HRDocumentsManager />}
+        {activeTab === 'settings' && (
+          <div className="space-y-6">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                Gmail Integration
+              </h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Connect your Gmail account to send automated emails to candidates and head reviewers.
+              </p>
+              <GmailConnectionManager />
+            </div>
+          </div>
+        )}
+        {activeTab === 'signatories' && <SignatoryManager />}
       </div>
     </div>
   );

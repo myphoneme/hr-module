@@ -407,7 +407,7 @@ Always be professional and friendly. Use the user's name occasionally to persona
 
     // Initial API call
     let response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       max_tokens: 1024,
       messages,
       tools,
@@ -438,7 +438,7 @@ Always be professional and friendly. Use the user's name occasionally to persona
 
       // Continue conversation with tool results
       response = await openai.chat.completions.create({
-        model: 'gpt-4o',
+        model: 'gpt-4o-mini',
         max_tokens: 1024,
         messages,
         tools,

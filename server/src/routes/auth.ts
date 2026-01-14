@@ -114,60 +114,66 @@ router.post('/google', async (req: Request, res: Response): Promise<void> => {
 
 // Email/Password Login (kept for default admin)
 router.post('/login', (req: Request, res: Response): void => {
-  const { email, password }: LoginInput = req.body;
+  try {
+    const { email, password }: LoginInput = req.body;
 
-  if (!email || !password) {
-    res.status(400).json({ error: 'Email and password are required' });
-    return;
-  }
+    if (!email || !password) {
+      res.status(400).json({ error: 'Email and password are required' });
+      return;
+    }
 
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase()) as User | undefined;
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase()) as User | undefined;
 
-  if (!user) {
-    res.status(401).json({ error: 'Invalid email or password' });
-    return;
-  }
+    if (!user) {
+      res.status(401).json({ error: 'Invalid email or password' });
+      return;
+    }
 
-  if (!user.isActive) {
-    res.status(403).json({ error: 'Account is deactivated. Contact administrator.' });
-    return;
-  }
+    if (!user.isActive) {
+      res.status(403).json({ error: 'Account is deactivated. Contact administrator.' });
+      return;
+    }
 
-  // If user has no password (Google-only user), reject password login
-  if (!user.password) {
-    res.status(400).json({ error: 'This account uses Google Sign-In. Please login with Google.' });
-    return;
-  }
+    // If user has no password (Google-only user), reject password login
+    if (!user.password) {
+      res.status(400).json({ error: 'This account uses Google Sign-In. Please login with Google.' });
+      return;
+    }
 
-  const validPassword = bcrypt.compareSync(password, user.password);
-  if (!validPassword) {
-    res.status(401).json({ error: 'Invalid email or password' });
-    return;
-  }
+    const validPassword = bcrypt.compareSync(password, user.password);
+    if (!validPassword) {
+      res.status(401).json({ error: 'Invalid email or password' });
+      return;
+    }
 
-  const payload: JwtPayload = {
-    userId: user.id,
-    email: user.email,
-    role: user.role,
-  };
-
-  const token = generateToken(payload);
-
-  res.cookie('token', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 24 * 60 * 60 * 1000,
-  });
-
-  res.json({
-    user: {
-      id: user.id,
+    const payload: JwtPayload = {
+      userId: user.id,
       email: user.email,
-      name: user.name,
       role: user.role,
-    },
-  });
+    };
+
+    const token = generateToken(payload);
+
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60 * 1000,
+    });
+
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
+    });
+  } catch (error: any) {
+    console.error('Login error:', error?.message || error);
+    console.error('Stack:', error?.stack);
+    res.status(500).json({ error: `Login failed: ${error?.message || 'Unknown error'}` });
+  }
 });
 
 // Logout

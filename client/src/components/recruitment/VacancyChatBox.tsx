@@ -25,7 +25,7 @@ export function VacancyChatBox({ onVacancyCreated }: VacancyChatBoxProps) {
   const [showExportModal, setShowExportModal] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const chatMutation = useVacancyChatProcess();
   const createVacancyMutation = useCreateVacancy();
@@ -336,15 +336,15 @@ Location: ${jd.location}`;
           {/* Input */}
           <div className="p-3 border-t border-gray-200 dark:border-gray-700">
             <div className="flex gap-2">
-              <input
+              <textarea
                 ref={inputRef}
-                type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder="e.g., React developer, 3-5 years, Noida, 12-15 LPA, full-time"
                 disabled={chatMutation.isPending}
-                className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+                rows={3}
+                className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 resize-none"
               />
               <button
                 onClick={handleSendMessage}

@@ -70,6 +70,11 @@ export const useRAG = () => {
     mutationFn: ragApi.promptGenerate,
   });
 
+  // Generate with template mutation
+  const generateWithTemplateMutation = useMutation({
+    mutationFn: ragApi.generateWithTemplate,
+  });
+
   // Extract offer letter mutation
   const extractOfferLetterMutation = useMutation({
     mutationFn: ragApi.extractOfferLetter,
@@ -139,6 +144,13 @@ export const useRAG = () => {
     promptGeneratedData: promptGenerateMutation.data,
     promptGenerationError: promptGenerateMutation.error,
     resetPromptGeneration: promptGenerateMutation.reset,
+
+    // Generate with Template
+    generateWithTemplate: (request: any) => generateWithTemplateMutation.mutateAsync(request),
+    isGeneratingWithTemplate: generateWithTemplateMutation.isPending,
+    generatedWithTemplateData: generateWithTemplateMutation.data,
+    generateWithTemplateError: generateWithTemplateMutation.error,
+    resetGenerateWithTemplate: generateWithTemplateMutation.reset,
 
     // Extract Offer Letter
     extractOfferLetter: (file: File) => extractOfferLetterMutation.mutateAsync(file),

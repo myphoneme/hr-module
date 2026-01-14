@@ -1,24 +1,36 @@
 import { useState } from 'react';
 import {
-  useMockRecruitment,
-  type MockInterview,
-} from '../../contexts/MockRecruitmentContext';
+  useInterviews,
+  useCandidates,
+  useSubmitInterviewFeedback,
+  useUpdateCandidate,
+  useDeleteInterview,
+  useUpdateInterview,
+  type Interview,
+  type Candidate,
+} from '../../hooks/useRecruitment';
 
 export function InterviewManager() {
-  const [selectedInterview, setSelectedInterview] = useState<MockInterview | null>(null);
+  const [selectedInterview, setSelectedInterview] = useState<Interview | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
 
-  const { mockInterviews, mockCandidates, updateMockInterview, deleteMockInterview, updateMockCandidate } = useMockRecruitment();
-
-  // Filter interviews
-  const filteredInterviews = mockInterviews.filter(i => {
-    if (statusFilter && i.status !== statusFilter) return false;
-    return true;
+  // Use real API hooks
+  const { data: interviews = [], isLoading: interviewsLoading, refetch } = useInterviews({
+    status: statusFilter || undefined,
   });
+  const { data: candidates = [] } = useCandidates();
+  const submitFeedbackMutation = useSubmitInterviewFeedback();
+  const updateCandidateMutation = useUpdateCandidate();
+  const deleteInterviewMutation = useDeleteInterview();
+  const updateInterviewMutation = useUpdateInterview();
+
+  // Filter interviews (already filtered by API, but can add more client-side filtering)
+  const filteredInterviews = interviews;
 
   // Get pending interview candidates (shortlisted but not scheduled)
-  const pendingCandidates = mockCandidates.filter(
-    c => c.status === 'shortlisted' || c.status === 'screening'
+  const pendingCandidates = candidates.filter(
+    (c: Candidate) => c.status === 'shortlisted' || c.status === 'screening'
   );
 
   return (
@@ -41,7 +53,7 @@ export function InterviewManager() {
           </select>
         </div>
         <div className="text-sm text-gray-500">
-          {filteredInterviews.length} interview(s)
+          {interviewsLoading ? 'Loading...' : `${filteredInterviews.length} interview(s)`}
         </div>
       </div>
 
@@ -64,7 +76,7 @@ export function InterviewManager() {
             </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
-            {pendingCandidates.slice(0, 5).map((c) => (
+            {pendingCandidates.slice(0, 5).map((c: Candidate) => (
               <span
                 key={c.id}
                 className="px-3 py-1 bg-white dark:bg-gray-800 rounded-full text-sm text-gray-700 dark:text-gray-300 border border-orange-200 dark:border-orange-700"
@@ -81,23 +93,72 @@ export function InterviewManager() {
         </div>
       )}
 
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-sm w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              Delete Interview?
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              Are you sure you want to delete this interview? This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="px-4 py-2 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  deleteInterviewMutation.mutate(deleteConfirm, {
+                    onSuccess: () => {
+                      setDeleteConfirm(null);
+                      refetch();
+                    }
+                  });
+                }}
+                disabled={deleteInterviewMutation.isPending}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleteInterviewMutation.isPending ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Interview Detail Modal */}
       {selectedInterview && (
         <InterviewDetailModal
           interview={selectedInterview}
           onClose={() => setSelectedInterview(null)}
-          onUpdate={(updates) => {
-            updateMockInterview(selectedInterview.id, updates);
-            if (updates.status === 'completed') {
-              // Update candidate status based on recommendation
-              const candidateStatus = updates.recommendation === 'strong_hire' || updates.recommendation === 'hire'
-                ? 'selected' : 'rejected';
-              updateMockCandidate(selectedInterview.candidate_id, { status: candidateStatus });
-            }
-            setSelectedInterview(null);
+          onSubmitScore={(scores, notes, isEdit) => {
+            const avgScore = (scores.technical + scores.communication + scores.problemSolving + scores.culturalFit + scores.overall) / 5;
+            const decision = avgScore >= 3 ? 'selected' : 'rejected';
+
+            submitFeedbackMutation.mutate({
+              id: selectedInterview.id,
+              feedback: {
+                score: avgScore,
+                notes: notes,
+                ai_decision: decision,
+              }
+            }, {
+              onSuccess: () => {
+                // Update candidate status
+                updateCandidateMutation.mutate({
+                  id: selectedInterview.candidate_id,
+                  candidate: { status: decision }
+                });
+                setSelectedInterview(null);
+                refetch();
+              }
+            });
           }}
           onDelete={() => {
-            deleteMockInterview(selectedInterview.id);
+            setDeleteConfirm(selectedInterview.id);
             setSelectedInterview(null);
           }}
         />
@@ -129,7 +190,7 @@ export function InterviewManager() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
           <p className="text-gray-500 dark:text-gray-400">
-            No interviews scheduled. Go to Candidates tab to schedule interviews.
+            {interviewsLoading ? 'Loading interviews...' : 'No interviews scheduled. Go to Candidates tab to schedule interviews.'}
           </p>
         </div>
       )}
@@ -137,8 +198,8 @@ export function InterviewManager() {
   );
 }
 
-function groupInterviewsByDate(interviews: MockInterview[]) {
-  const groups: Record<string, MockInterview[]> = {};
+function groupInterviewsByDate(interviews: Interview[]) {
+  const groups: Record<string, Interview[]> = {};
   interviews.forEach((interview) => {
     const date = interview.scheduled_date;
     if (!groups[date]) groups[date] = [];
@@ -161,12 +222,14 @@ function formatDate(dateStr: string) {
 }
 
 // Interview Card
-function InterviewCard({ interview, onClick }: { interview: MockInterview; onClick: () => void }) {
+function InterviewCard({ interview, onClick }: { interview: Interview; onClick: () => void }) {
   const statusColors: Record<string, string> = {
     scheduled: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+    confirmed: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
     completed: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
     cancelled: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
     rescheduled: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+    no_show: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200',
   };
 
   const typeIcons: Record<string, string> = {
@@ -176,23 +239,37 @@ function InterviewCard({ interview, onClick }: { interview: MockInterview; onCli
     final: '🎯',
   };
 
+  // Build candidate name from interview data
+  const candidateName = interview.first_name
+    ? `${interview.first_name} ${interview.last_name || ''}`.trim()
+    : 'Unknown Candidate';
+
+  const isCompleted = interview.status === 'completed';
+  const isSelected = interview.recommendation === 'strong_hire' || interview.recommendation === 'hire' || interview.recommendation === 'selected';
+
   return (
     <div
       onClick={onClick}
-      className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 p-4 cursor-pointer hover:shadow-md transition-shadow"
+      className={`bg-white dark:bg-gray-800 rounded-lg shadow border p-4 cursor-pointer hover:shadow-md transition-shadow ${
+        isCompleted
+          ? isSelected
+            ? 'border-green-300 dark:border-green-700'
+            : 'border-red-300 dark:border-red-700'
+          : 'border-gray-200 dark:border-gray-700'
+      }`}
     >
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-4">
           <div className="text-2xl">{typeIcons[interview.interview_type] || '📅'}</div>
           <div>
             <h4 className="font-medium text-gray-900 dark:text-white">
-              {interview.candidate_name}
+              {candidateName}
             </h4>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              {interview.vacancy_title} • Round {interview.round_number}
+              {interview.vacancy_title || 'Position'} - Round {interview.round_number}
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              {interview.experience_years} yrs exp • {interview.current_location}
+              Interviewer: {interview.interviewer_name || 'TBD'}
             </p>
           </div>
         </div>
@@ -205,36 +282,38 @@ function InterviewCard({ interview, onClick }: { interview: MockInterview; onCli
         </div>
       </div>
 
-      {/* Candidate Details Row */}
-      <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-        <div>
-          <span className="text-gray-400">Skills:</span>
-          <p className="text-gray-700 dark:text-gray-300 truncate">{interview.skills || '-'}</p>
-        </div>
-        <div>
-          <span className="text-gray-400">Current CTC:</span>
-          <p className="text-gray-700 dark:text-gray-300">
-            {interview.current_salary ? `${(interview.current_salary / 100000).toFixed(1)} LPA` : '-'}
-          </p>
-        </div>
-        <div>
-          <span className="text-gray-400">Expected CTC:</span>
-          <p className="text-gray-700 dark:text-gray-300">
-            {interview.expected_salary ? `${(interview.expected_salary / 100000).toFixed(1)} LPA` : '-'}
-          </p>
-        </div>
-        <div>
-          <span className="text-gray-400">Notice Period:</span>
-          <p className="text-gray-700 dark:text-gray-300">{interview.notice_period || '-'}</p>
-        </div>
-      </div>
-
       <div className="mt-2 flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
-        <span>👤 {interview.interviewer_name}</span>
+        <span className="capitalize">{interview.interview_type} Interview</span>
         {interview.location && <span>📍 {interview.location}</span>}
       </div>
 
-      {interview.recommendation && (
+      {/* Score and Result Display */}
+      {isCompleted && (
+        <div className={`mt-3 p-2 rounded-lg ${
+          isSelected ? 'bg-green-50 dark:bg-green-900/30' : 'bg-red-50 dark:bg-red-900/30'
+        }`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">{isSelected ? '✅' : '❌'}</span>
+              <span className={`font-semibold ${isSelected ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
+                {isSelected ? 'Selected' : 'Rejected'}
+              </span>
+            </div>
+            {interview.rating && (
+              <div className="flex items-center gap-1">
+                <span className="text-sm text-gray-600 dark:text-gray-400">Score:</span>
+                <span className={`font-bold text-lg ${
+                  interview.rating >= 3 ? 'text-green-600' : 'text-red-600'
+                }`}>
+                  {interview.rating}/5
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {interview.recommendation && !isCompleted && (
         <div className="mt-2 text-sm">
           <span className="text-gray-500">Recommendation: </span>
           <span className={`font-medium ${
@@ -253,44 +332,32 @@ function InterviewCard({ interview, onClick }: { interview: MockInterview; onCli
 function InterviewDetailModal({
   interview,
   onClose,
-  onUpdate,
+  onSubmitScore,
   onDelete,
 }: {
-  interview: MockInterview;
+  interview: Interview;
   onClose: () => void;
-  onUpdate: (updates: Partial<MockInterview>) => void;
+  onSubmitScore: (scores: { technical: number; communication: number; problemSolving: number; culturalFit: number; overall: number }, notes: string, isEdit: boolean) => void;
   onDelete: () => void;
 }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const existingScore = interview.rating || 3;
   const [scores, setScores] = useState({
-    technical: 3,
-    communication: 3,
-    problemSolving: 3,
-    culturalFit: 3,
-    overall: 3,
+    technical: existingScore,
+    communication: existingScore,
+    problemSolving: existingScore,
+    culturalFit: existingScore,
+    overall: existingScore,
   });
   const [notes, setNotes] = useState(interview.feedback || '');
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const avgScore = Math.round(
     (scores.technical + scores.communication + scores.problemSolving + scores.culturalFit + scores.overall) / 5 * 10
   ) / 10;
 
-  const getRecommendation = (score: number): 'strong_hire' | 'hire' | 'no_hire' | 'strong_no_hire' => {
-    if (score >= 4) return 'strong_hire';
-    if (score >= 3) return 'hire';
-    if (score >= 2) return 'no_hire';
-    return 'strong_no_hire';
-  };
-
-  const handleSubmitScore = () => {
-    const recommendation = getRecommendation(avgScore);
-    onUpdate({
-      status: 'completed',
-      rating: avgScore,
-      feedback: notes,
-      recommendation,
-    });
-  };
+  const candidateName = interview.first_name
+    ? `${interview.first_name} ${interview.last_name || ''}`.trim()
+    : 'Unknown Candidate';
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -300,63 +367,31 @@ function InterviewDetailModal({
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
               Interview Details
             </h2>
-            <p className="text-sm text-gray-500">{interview.candidate_name}</p>
+            <p className="text-sm text-gray-500">{candidateName}</p>
           </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 text-2xl">
-            &times;
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onDelete}
+              className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
+              title="Delete Interview"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 text-2xl">
+              &times;
+            </button>
+          </div>
         </div>
 
         <div className="p-6 space-y-6">
-          {/* Candidate Info Card */}
-          <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
-            <h3 className="font-medium text-gray-900 dark:text-white mb-3">Candidate Information</h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-gray-500">Email:</span>
-                <p className="text-gray-900 dark:text-white">{interview.candidate_email}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Phone:</span>
-                <p className="text-gray-900 dark:text-white">{interview.candidate_phone}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Experience:</span>
-                <p className="text-gray-900 dark:text-white">{interview.experience_years} years</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Location:</span>
-                <p className="text-gray-900 dark:text-white">{interview.current_location}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Current CTC:</span>
-                <p className="text-gray-900 dark:text-white">
-                  {interview.current_salary ? `${(interview.current_salary / 100000).toFixed(1)} LPA` : 'Not provided'}
-                </p>
-              </div>
-              <div>
-                <span className="text-gray-500">Expected CTC:</span>
-                <p className="text-gray-900 dark:text-white">
-                  {interview.expected_salary ? `${(interview.expected_salary / 100000).toFixed(1)} LPA` : 'Not provided'}
-                </p>
-              </div>
-              <div>
-                <span className="text-gray-500">Notice Period:</span>
-                <p className="text-gray-900 dark:text-white">{interview.notice_period || 'Not provided'}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Skills:</span>
-                <p className="text-gray-900 dark:text-white truncate">{interview.skills || '-'}</p>
-              </div>
-            </div>
-          </div>
-
           {/* Interview Info */}
           <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <span className="text-gray-500">Position:</span>
-                <p className="text-gray-900 dark:text-white">{interview.vacancy_title}</p>
+                <p className="text-gray-900 dark:text-white">{interview.vacancy_title || 'N/A'}</p>
               </div>
               <div>
                 <span className="text-gray-500">Type:</span>
@@ -372,11 +407,11 @@ function InterviewDetailModal({
               </div>
               <div>
                 <span className="text-gray-500">Interviewer:</span>
-                <p className="text-gray-900 dark:text-white">{interview.interviewer_name}</p>
+                <p className="text-gray-900 dark:text-white">{interview.interviewer_name || 'TBD'}</p>
               </div>
               <div>
                 <span className="text-gray-500">Location:</span>
-                <p className="text-gray-900 dark:text-white">{interview.location}</p>
+                <p className="text-gray-900 dark:text-white">{interview.location || 'N/A'}</p>
               </div>
             </div>
             {interview.meeting_link && (
@@ -394,33 +429,46 @@ function InterviewDetailModal({
           </div>
 
           {/* Completed Interview Result */}
-          {interview.status === 'completed' ? (
-            <div className={`rounded-lg p-6 text-center ${
-              interview.recommendation === 'strong_hire' || interview.recommendation === 'hire'
+          {interview.status === 'completed' && !isEditing ? (
+            <div className={`rounded-lg p-6 ${
+              interview.recommendation === 'strong_hire' || interview.recommendation === 'hire' || interview.recommendation === 'selected'
                 ? 'bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800'
                 : 'bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800'
             }`}>
-              <div className="text-4xl mb-2">
-                {interview.recommendation === 'strong_hire' || interview.recommendation === 'hire' ? '✅' : '❌'}
+              <div className="text-center">
+                <div className="text-4xl mb-2">
+                  {interview.recommendation === 'strong_hire' || interview.recommendation === 'hire' || interview.recommendation === 'selected' ? '✅' : '❌'}
+                </div>
+                <h3 className={`text-xl font-bold ${
+                  interview.recommendation === 'strong_hire' || interview.recommendation === 'hire' || interview.recommendation === 'selected'
+                    ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'
+                }`}>
+                  {interview.recommendation === 'strong_hire' || interview.recommendation === 'hire' || interview.recommendation === 'selected' ? 'Selected' : 'Rejected'}
+                </h3>
+                {interview.rating && (
+                  <p className="mt-2 text-gray-600 dark:text-gray-400">
+                    Interview Score: <span className="font-bold text-2xl">{interview.rating}/5</span>
+                  </p>
+                )}
+                {interview.feedback && (
+                  <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
+                    Notes: {interview.feedback}
+                  </p>
+                )}
               </div>
-              <h3 className={`text-xl font-bold ${
-                interview.recommendation === 'strong_hire' || interview.recommendation === 'hire'
-                  ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'
-              }`}>
-                {interview.recommendation === 'strong_hire' || interview.recommendation === 'hire' ? 'Selected' : 'Rejected'}
-              </h3>
-              {interview.rating && (
-                <p className="mt-2 text-gray-600 dark:text-gray-400">
-                  Interview Score: <span className="font-bold text-lg">{interview.rating}/5</span>
-                </p>
-              )}
-              {interview.feedback && (
-                <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
-                  Notes: {interview.feedback}
-                </p>
-              )}
+              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Edit Score
+                </button>
+              </div>
             </div>
-          ) : (
+          ) : (interview.status !== 'completed' || isEditing) && (
             /* Scoring Section for Scheduled Interviews */
             <div className="space-y-4">
               <h3 className="font-medium text-gray-900 dark:text-white">Interview Scoring</h3>
@@ -466,44 +514,24 @@ function InterviewDetailModal({
                 />
               </div>
 
-              <button
-                onClick={handleSubmitScore}
-                className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-              >
-                Submit Score & Complete Interview
-              </button>
-            </div>
-          )}
-
-          {/* Delete Button */}
-          <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-            {showDeleteConfirm ? (
-              <div className="flex items-center justify-between">
-                <span className="text-red-600 text-sm">Delete this interview?</span>
-                <div className="flex gap-2">
+              <div className="flex gap-3">
+                {isEditing && (
                   <button
-                    onClick={() => setShowDeleteConfirm(false)}
-                    className="px-3 py-1 text-gray-600 dark:text-gray-400 border rounded"
+                    onClick={() => setIsEditing(false)}
+                    className="flex-1 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 font-medium"
                   >
                     Cancel
                   </button>
-                  <button
-                    onClick={onDelete}
-                    className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
-                  >
-                    Delete
-                  </button>
-                </div>
+                )}
+                <button
+                  onClick={() => onSubmitScore(scores, notes, isEditing)}
+                  className="flex-1 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                >
+                  {isEditing ? 'Update Score' : 'Submit Score & Complete Interview'}
+                </button>
               </div>
-            ) : (
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="text-red-600 hover:text-red-700 text-sm"
-              >
-                Delete Interview
-              </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

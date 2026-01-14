@@ -2,10 +2,12 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import db from '../db.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { getGmailClient } from '../utils/googleAuth.js';
 import OpenAI from 'openai';
-import pdfParse from 'pdf-parse';
+import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 
 const router = Router();
@@ -244,7 +246,7 @@ Format the output as JSON with these keys:
 - Key Skills: ${skills_required || 'Not specified'}`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -292,7 +294,8 @@ Extract and return a JSON object with these fields (use null if not mentioned):
   "employment_type": "full_time" | "part_time" | "contract" | "internship" | null,
   "openings_count": number or null,
   "department": "inferred department based on role" or null,
-  "additional_notes": "any other details mentioned"
+  "skills_mentioned": ["skill1", "skill2", ...] - EXTRACT ALL skills/technologies/tools mentioned (e.g., React, Node.js, AWS, SQL, etc.),
+  "additional_notes": "any other details mentioned that are NOT skills"
 }
 
 Important rules:
@@ -300,10 +303,12 @@ Important rules:
 - Convert "lakhs" to INR (e.g., "12 lakhs" = 1200000)
 - Convert experience terms: "fresher" = 0-1, "junior" = 1-3, "mid-level" = 3-5, "senior" = 5-10
 - Infer department from role (e.g., "React Developer" → "Engineering")
-- Keep null for fields not explicitly or implicitly mentioned`;
+- Keep null for fields not explicitly or implicitly mentioned
+- CRITICALLY IMPORTANT: Extract ALL skills, technologies, frameworks, tools, programming languages mentioned by the user into skills_mentioned array
+- Examples of skills to capture: React, Node.js, JavaScript, TypeScript, Python, AWS, Docker, SQL, MongoDB, Git, REST API, GraphQL, etc.`;
 
     const extractionResponse = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: extractionPrompt },
         { role: 'user', content: message }
@@ -317,15 +322,25 @@ Important rules:
     // Merge new extraction with existing data (new values override only if not null)
     const mergedData: Record<string, any> = { ...currentData };
     for (const [key, value] of Object.entries(newExtraction)) {
-      if (value !== null && value !== undefined && key !== 'additional_notes') {
+      if (value !== null && value !== undefined && key !== 'additional_notes' && key !== 'skills_mentioned') {
         mergedData[key] = value;
       }
     }
+    // Merge additional_notes
     if (newExtraction.additional_notes) {
       mergedData.additional_notes = [
         mergedData.additional_notes,
         newExtraction.additional_notes
       ].filter(Boolean).join('. ');
+    }
+    // Merge skills_mentioned arrays (combine and deduplicate)
+    if (newExtraction.skills_mentioned && Array.isArray(newExtraction.skills_mentioned)) {
+      const existingSkills = mergedData.skills_mentioned || [];
+      const allSkills = [...existingSkills, ...newExtraction.skills_mentioned];
+      // Deduplicate (case-insensitive)
+      const uniqueSkills = [...new Set(allSkills.map((s: string) => s.toLowerCase()))]
+        .map(s => allSkills.find((orig: string) => orig.toLowerCase() === s));
+      mergedData.skills_mentioned = uniqueSkills;
     }
 
     // Step 2: Check mandatory fields
@@ -363,7 +378,13 @@ Important rules:
         LIMIT 1
       `).get() as { extracted_text: string } | undefined;
 
-      const jdPrompt = `You are an HR professional creating a job description. Generate a complete, professional job description.
+      // Prepare skills list from user-mentioned skills
+      const userMentionedSkills = mergedData.skills_mentioned || [];
+      const skillsContext = userMentionedSkills.length > 0
+        ? `\n\n**MANDATORY SKILLS FROM HR (MUST INCLUDE ALL):**\n${userMentionedSkills.map((s: string) => `- ${s}`).join('\n')}`
+        : '';
+
+      const jdPrompt = `You are an expert HR professional creating a comprehensive job description. Generate a complete, professional job description.
 
 ${referenceDoc ? `Company reference for tone and style:\n${referenceDoc.extracted_text.substring(0, 2000)}\n\n` : ''}
 Job Details:
@@ -374,22 +395,33 @@ Job Details:
 - Salary: ₹${((mergedData.salary_min || 0) / 100000).toFixed(1)}L - ₹${((mergedData.salary_max || mergedData.salary_min * 1.3) / 100000).toFixed(1)}L per annum
 - Employment Type: ${mergedData.employment_type?.replace('_', ' ') || 'Full Time'}
 - Openings: ${mergedData.openings_count || 1}
-${mergedData.additional_notes ? `- Additional Notes: ${mergedData.additional_notes}` : ''}
+${mergedData.additional_notes ? `- Additional Notes: ${mergedData.additional_notes}` : ''}${skillsContext}
 
 Generate a JSON response with:
 {
   "job_summary": "2-3 sentence overview of the role",
   "responsibilities": ["responsibility 1", "responsibility 2", ...] (5-7 items),
-  "skills_required": ["skill 1", "skill 2", ...] (5-8 items),
+  "skills_required": ["skill 1", "skill 2", ...] (8-12 items - see rules below),
   "qualifications": "education and certification requirements",
   "requirements": ["requirement 1", "requirement 2", ...] (5-7 items),
   "benefits": ["benefit 1", "benefit 2", ...] (4-6 items)
 }
 
+**CRITICAL RULES FOR SKILLS:**
+1. You MUST include ALL skills mentioned by HR in the skills_required list - these are non-negotiable requirements from the hiring manager
+2. After including ALL HR-specified skills, ADD relevant complementary skills that are industry-standard for a ${mergedData.title} role
+3. For a ${mergedData.title} with ${mergedData.experience_min || 0}-${mergedData.experience_max || mergedData.experience_min + 2} years experience, include:
+   - All HR-mentioned skills (MANDATORY)
+   - Core technical skills for the role (e.g., version control, testing, debugging)
+   - Soft skills relevant to the experience level
+   - Any commonly paired technologies (e.g., React usually needs JavaScript, HTML, CSS)
+4. Skills should be ordered: Primary skills first (from HR), then complementary technical skills, then soft skills
+5. Total skills should be 8-12 items to be comprehensive
+
 Use industry-standard language for the ${mergedData.title} role. Be specific and professional.`;
 
       const jdResponse = await openai.chat.completions.create({
-        model: 'gpt-4o',
+        model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: jdPrompt }
         ],
@@ -398,6 +430,28 @@ Use industry-standard language for the ${mergedData.title} role. Be specific and
       });
 
       const jdContent = JSON.parse(jdResponse.choices[0].message.content || '{}');
+
+      // Ensure user-mentioned skills are included in the final skills list
+      let finalSkills: string[] = [];
+      const aiSkills = Array.isArray(jdContent.skills_required) ? jdContent.skills_required : [];
+
+      // Add user-mentioned skills first (they are mandatory)
+      if (userMentionedSkills.length > 0) {
+        finalSkills = [...userMentionedSkills];
+        // Add AI-generated skills that aren't duplicates
+        for (const aiSkill of aiSkills) {
+          const isDuplicate = finalSkills.some(
+            (s: string) => s.toLowerCase() === aiSkill.toLowerCase() ||
+              s.toLowerCase().includes(aiSkill.toLowerCase()) ||
+              aiSkill.toLowerCase().includes(s.toLowerCase())
+          );
+          if (!isDuplicate) {
+            finalSkills.push(aiSkill);
+          }
+        }
+      } else {
+        finalSkills = aiSkills;
+      }
 
       generatedJD = {
         title: mergedData.title,
@@ -413,9 +467,7 @@ Use industry-standard language for the ${mergedData.title} role. Be specific and
         responsibilities: Array.isArray(jdContent.responsibilities)
           ? jdContent.responsibilities.join('\n• ')
           : jdContent.responsibilities,
-        skills_required: Array.isArray(jdContent.skills_required)
-          ? jdContent.skills_required.join(', ')
-          : jdContent.skills_required,
+        skills_required: finalSkills.join(', '),
         qualifications: jdContent.qualifications,
         requirements: Array.isArray(jdContent.requirements)
           ? jdContent.requirements.join('\n• ')
@@ -445,6 +497,12 @@ Use industry-standard language for the ${mergedData.title} role. Be specific and
           }
           return `${f.label}: ${value}`;
         });
+
+      // Add captured skills to the response
+      const skillsList = mergedData.skills_mentioned || [];
+      if (skillsList.length > 0) {
+        capturedFields.push(`Skills: ${skillsList.join(', ')}`);
+      }
 
       if (capturedFields.length > 0 && conversationHistory && conversationHistory.length <= 2) {
         responseText = `Got it! I've noted:\n${capturedFields.map(f => `• ${f}`).join('\n')}\n\n${nextQuestion}`;
@@ -574,7 +632,7 @@ Rules:
 
       try {
         const completion = await openai.chat.completions.create({
-          model: 'gpt-4o',
+          model: 'gpt-4o-mini',
           messages: [
             { role: 'system', content: 'You are an HR assistant that extracts candidate information from resumes. Be accurate and never assume data that is not present.' },
             { role: 'user', content: extractionPrompt }
@@ -745,17 +803,25 @@ router.post('/candidates', authenticateToken, upload.single('resume'), async (re
     let resume_extracted_text = null;
 
     // If resume was uploaded, extract text
+    // Variables to hold extracted data from resume
+    let extractedExperience = experience_years;
+    let extractedSkills = skills;
+    let extractedCurrentCompany = current_company;
+    let extractedDesignation = current_designation;
+    let extractedCity = city;
+
     if (req.file) {
       resume_path = req.file.filename;
 
-      // Extract text from resume using AI
+      // Extract text and structured data from resume using AI
       try {
         const filePath = req.file.path;
         const fileBuffer = fs.readFileSync(filePath);
         const base64File = fileBuffer.toString('base64');
 
-        const completion = await openai.chat.completions.create({
-          model: 'gpt-4o',
+        // First, extract the text
+        const textCompletion = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
           messages: [
             {
               role: 'user',
@@ -776,9 +842,71 @@ router.post('/candidates', authenticateToken, upload.single('resume'), async (re
           max_tokens: 4000,
         });
 
-        resume_extracted_text = completion.choices[0].message.content;
+        resume_extracted_text = textCompletion.choices[0].message.content;
+
+        // Now extract structured data including experience
+        if (resume_extracted_text) {
+          const structuredCompletion = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+              {
+                role: 'user',
+                content: `Extract structured information from this resume text. Return a JSON object.
+
+RESUME TEXT:
+${resume_extracted_text.substring(0, 6000)}
+
+Return ONLY a JSON object with these fields:
+{
+  "total_experience": number (total years of work experience as decimal, e.g., 1.5 for 1 year 6 months),
+  "skills": "comma-separated list of technical skills",
+  "current_company": "current or most recent employer",
+  "current_designation": "current or most recent job title",
+  "location": "current city/location"
+}
+
+CRITICAL FOR total_experience:
+- Count all jobs EXCEPT internships (include trainee positions)
+- Look for job dates like "Jan 2023 - Present", "2022-2024"
+- For "Present" or current job, use today: ${new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+- Count total months, then divide by 12:
+  * 13 months = 1.08 years
+  * 14 months = 1.17 years
+  * 15 months = 1.25 years
+- DO NOT count internships
+- DO count trainee positions
+- For freshers with only internship, return 0`
+              }
+            ],
+            response_format: { type: 'json_object' },
+            max_tokens: 1000,
+          });
+
+          const extractedData = JSON.parse(structuredCompletion.choices[0].message.content || '{}');
+          console.log('=== AI EXTRACTED DATA ===');
+          console.log('Total Experience from AI:', extractedData.total_experience);
+          console.log('Full extracted data:', JSON.stringify(extractedData, null, 2));
+
+          // Use extracted data - ALWAYS use AI extraction for experience
+          if (extractedData.total_experience !== undefined && extractedData.total_experience !== null) {
+            extractedExperience = extractedData.total_experience;
+            console.log('Using AI extracted experience:', extractedExperience);
+          }
+          if (!skills && extractedData.skills) {
+            extractedSkills = extractedData.skills;
+          }
+          if (!current_company && extractedData.current_company) {
+            extractedCurrentCompany = extractedData.current_company;
+          }
+          if (!current_designation && extractedData.current_designation) {
+            extractedDesignation = extractedData.current_designation;
+          }
+          if (!city && extractedData.location) {
+            extractedCity = extractedData.location;
+          }
+        }
       } catch (extractError) {
-        console.error('Error extracting resume text:', extractError);
+        console.error('Error extracting resume data:', extractError);
       }
     }
 
@@ -790,9 +918,9 @@ router.post('/candidates', authenticateToken, upload.single('resume'), async (re
         resume_extracted_text, source, referral_name, created_by
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      vacancy_id || null, first_name, last_name, email, phone, address, city, state, pincode,
-      current_company, current_designation, current_salary, expected_salary,
-      experience_years, notice_period, skills, education, resume_path,
+      vacancy_id || null, first_name, last_name, email, phone, address, extractedCity || city, state, pincode,
+      extractedCurrentCompany || current_company, extractedDesignation || current_designation, current_salary, expected_salary,
+      extractedExperience || experience_years, notice_period, extractedSkills || skills, education, resume_path,
       resume_extracted_text, source || 'direct', referral_name, userId
     );
 
@@ -869,7 +997,7 @@ Required: ${candidateWithVacancy?.skills_required || 'N/A'}, ${candidateWithVaca
         );
 
         // Return candidate with screening results
-        const screenedCandidate = db.prepare('SELECT * FROM candidates WHERE id = ?').get(candidateId);
+        const screenedCandidate = db.prepare('SELECT * FROM candidates WHERE id = ?').get(candidateId) as Record<string, any>;
         return res.status(201).json({
           ...screenedCandidate,
           auto_screening: {
@@ -980,7 +1108,7 @@ Required Skills: ${candidate.skills_required || 'Not specified'}
 ${candidate.resume_extracted_text ? `Resume Content:\n${candidate.resume_extracted_text.substring(0, 3000)}` : ''}`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -1002,6 +1130,91 @@ ${candidate.resume_extracted_text ? `Resume Content:\n${candidate.resume_extract
   } catch (error) {
     console.error('Error screening candidate:', error);
     res.status(500).json({ error: 'Failed to screen candidate' });
+  }
+});
+
+// Re-extract experience from resume text (for fixing incorrect experience)
+router.post('/candidates/:id/re-extract-experience', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const candidate = db.prepare(`
+      SELECT * FROM candidates WHERE id = ? AND isActive = 1
+    `).get(id) as any;
+
+    if (!candidate) {
+      return res.status(404).json({ error: 'Candidate not found' });
+    }
+
+    if (!candidate.resume_extracted_text) {
+      return res.status(400).json({ error: 'No resume text available for this candidate' });
+    }
+
+    // Extract experience from resume text using AI
+    const extractionPrompt = `Analyze this resume text and extract the TOTAL YEARS of work experience.
+
+RESUME TEXT:
+${candidate.resume_extracted_text.substring(0, 6000)}
+
+INSTRUCTIONS:
+1. Look at ALL employment/work entries with their dates
+2. Calculate duration from start date to end date for each job
+3. For "Present" or current jobs, calculate up to today's date (${new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })})
+4. Sum up ALL employment periods
+5. MUST convert months to years by DIVIDING BY 12:
+   * 1 month = 0.08, 2 months = 0.17, 3 months = 0.25
+   * 4 months = 0.33, 5 months = 0.42, 6 months = 0.5
+   * 7 months = 0.58, 8 months = 0.67, 9 months = 0.75
+   * 10 months = 0.83, 11 months = 0.92
+
+IMPORTANT:
+- "1 year 3 months" = 1 + (3/12) = 1.25 years (NOT 1.3)
+- "1 year 6 months" = 1 + (6/12) = 1.5 years
+- "2 years 9 months" = 2 + (9/12) = 2.75 years
+- Calculate from actual job dates if available
+- Do NOT just return the first number you see
+
+Return ONLY a JSON object:
+{
+  "total_experience_years": number (e.g., 1.25 for 1 year 3 months),
+  "experience_calculation": "Brief explanation of how you calculated this"
+}`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: extractionPrompt }],
+      response_format: { type: 'json_object' },
+      max_tokens: 500,
+    });
+
+    const result = JSON.parse(completion.choices[0].message.content || '{}');
+    console.log('Re-extracted experience for candidate', id, ':', result);
+
+    const newExperience = result.total_experience_years;
+
+    if (newExperience !== undefined && newExperience !== null) {
+      // Update candidate with new experience
+      db.prepare(`
+        UPDATE candidates
+        SET experience_years = ?, updatedAt = datetime('now')
+        WHERE id = ?
+      `).run(newExperience, id);
+
+      const updatedCandidate = db.prepare('SELECT * FROM candidates WHERE id = ?').get(id);
+
+      res.json({
+        success: true,
+        old_experience: candidate.experience_years,
+        new_experience: newExperience,
+        calculation: result.experience_calculation,
+        candidate: updatedCandidate
+      });
+    } else {
+      res.status(400).json({ error: 'Could not extract experience from resume' });
+    }
+  } catch (error) {
+    console.error('Error re-extracting experience:', error);
+    res.status(500).json({ error: 'Failed to re-extract experience' });
   }
 });
 
@@ -1092,6 +1305,132 @@ router.post('/interviews', authenticateToken, (req, res) => {
   }
 });
 
+// Update interview (e.g., set time, reschedule)
+router.patch('/interviews/:id', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      scheduled_date, scheduled_time, interviewer_id, interview_type,
+      duration_minutes, location, meeting_link, status, notes
+    } = req.body;
+
+    const interview = db.prepare(`
+      SELECT * FROM interviews WHERE id = ? AND isActive = 1
+    `).get(id) as any;
+
+    if (!interview) {
+      return res.status(404).json({ error: 'Interview not found' });
+    }
+
+    const updates: string[] = [];
+    const values: any[] = [];
+
+    if (scheduled_date !== undefined) {
+      updates.push('scheduled_date = ?');
+      values.push(scheduled_date);
+    }
+    if (scheduled_time !== undefined) {
+      updates.push('scheduled_time = ?');
+      values.push(scheduled_time);
+      // Clear TIME_PENDING note if time is being set
+      if (interview.notes?.includes('TIME_PENDING')) {
+        updates.push('notes = ?');
+        values.push('Interview time confirmed by HR');
+      }
+    }
+    if (interviewer_id !== undefined) {
+      updates.push('interviewer_id = ?');
+      values.push(interviewer_id);
+    }
+    if (interview_type !== undefined) {
+      updates.push('interview_type = ?');
+      values.push(interview_type);
+    }
+    if (duration_minutes !== undefined) {
+      updates.push('duration_minutes = ?');
+      values.push(duration_minutes);
+    }
+    if (location !== undefined) {
+      updates.push('location = ?');
+      values.push(location);
+    }
+    if (meeting_link !== undefined) {
+      updates.push('meeting_link = ?');
+      values.push(meeting_link);
+    }
+    if (status !== undefined) {
+      updates.push('status = ?');
+      values.push(status);
+    }
+    if (notes !== undefined && !interview.notes?.includes('TIME_PENDING')) {
+      updates.push('notes = ?');
+      values.push(notes);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    updates.push("updatedAt = datetime('now')");
+    values.push(id);
+
+    db.prepare(`
+      UPDATE interviews SET ${updates.join(', ')} WHERE id = ?
+    `).run(...values);
+
+    const updatedInterview = db.prepare(`
+      SELECT i.*, c.first_name, c.last_name, u.name as interviewer_name
+      FROM interviews i
+      LEFT JOIN candidates c ON i.candidate_id = c.id
+      LEFT JOIN users u ON i.interviewer_id = u.id
+      WHERE i.id = ?
+    `).get(id);
+
+    res.json(updatedInterview);
+  } catch (error) {
+    console.error('Error updating interview:', error);
+    res.status(500).json({ error: 'Failed to update interview' });
+  }
+});
+
+// Delete interview
+router.delete('/interviews/:id', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const interview = db.prepare(`
+      SELECT * FROM interviews WHERE id = ? AND isActive = 1
+    `).get(id) as any;
+
+    if (!interview) {
+      return res.status(404).json({ error: 'Interview not found' });
+    }
+
+    // Soft delete - set isActive to 0
+    db.prepare(`
+      UPDATE interviews SET isActive = 0, updatedAt = datetime('now') WHERE id = ?
+    `).run(id);
+
+    // Update candidate status back to shortlisted if they have no other active interviews
+    const otherInterviews = db.prepare(`
+      SELECT COUNT(*) as count FROM interviews
+      WHERE candidate_id = ? AND id != ? AND isActive = 1
+    `).get(interview.candidate_id, id) as { count: number };
+
+    if (otherInterviews.count === 0) {
+      db.prepare(`
+        UPDATE candidates SET status = 'shortlisted', updatedAt = datetime('now')
+        WHERE id = ? AND status = 'interview_scheduled'
+      `).run(interview.candidate_id);
+    }
+
+    res.json({ message: 'Interview deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting interview:', error);
+    res.status(500).json({ error: 'Failed to delete interview' });
+  }
+});
+
 // Generate interview questions using AI
 router.post('/interviews/:id/generate-questions', authenticateToken, async (req, res) => {
   try {
@@ -1131,7 +1470,7 @@ Job Requirements: ${interview.requirements || 'Not specified'}
 ${interview.resume_extracted_text ? `Candidate Background:\n${interview.resume_extracted_text.substring(0, 2000)}` : ''}`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -1413,7 +1752,7 @@ Based on the criteria, provide scoring and automatic decision:
 - Score in between: Needs manual review`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -1909,7 +2248,7 @@ Company: ${defaults.company_name || 'Phoneme Solutions Pvt. Ltd.'}
 Company Address: ${defaults.company_address || 'C-124 A, Sector 2, Noida – 201301'}`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -2174,9 +2513,11 @@ router.post('/screen-resumes', authenticateToken, resumeScreeningUpload.array('r
         let resumeText = '';
 
         if (fileExt === '.pdf') {
-          // Extract text from PDF using pdf-parse
-          const pdfData = await pdfParse(fileBuffer);
-          resumeText = pdfData.text;
+          // Extract text from PDF using pdf-parse v2
+          const pdfParser = new PDFParse({ data: fileBuffer });
+          const textResult = await pdfParser.getText();
+          resumeText = textResult.text;
+          await pdfParser.destroy();
         } else if (fileExt === '.docx') {
           // Extract text from DOCX using mammoth
           const result = await mammoth.extractRawText({ buffer: fileBuffer });
@@ -2195,122 +2536,202 @@ router.post('/screen-resumes', authenticateToken, resumeScreeningUpload.array('r
           throw new Error('Could not extract text from resume. File may be image-based or corrupted.');
         }
 
-        // Step 2: Extract structured data from resume text using AI
-        const extractionPrompt = `You are an expert HR assistant. Extract candidate information from this resume text.
+        // Get JD required skills for skill-wise experience extraction
+        const jdRequiredSkills = (vacancy.skills_required || '').split(',').map((s: string) => s.trim()).filter(Boolean);
 
-RESUME TEXT:
-${resumeText.substring(0, 8000)}
+        // Step 2: Extract structured data AND match against JD using AI (combined for smarter results)
+        const extractionAndMatchingPrompt = `You are an expert HR recruiter screening resumes. Analyze this resume against the job requirements and provide detailed extraction and matching.
 
-Return a JSON object with EXACTLY these fields (use null if not found, don't make up data):
+=== JOB REQUIREMENTS ===
+Job Title: ${vacancy.title}
+Required Experience: ${vacancy.experience_min || 0} - ${vacancy.experience_max || 10} years
+Location: ${vacancy.location || 'Any'}
+Required Skills: ${jdRequiredSkills.join(', ')}
+Job Description: ${(vacancy.job_description || '').substring(0, 1000)}
+
+=== RESUME TEXT ===
+${resumeText.substring(0, 10000)}
+
+=== YOUR TASK ===
+Extract candidate info and INTELLIGENTLY match against the job requirements.
+
+Return a JSON object:
 {
-  "candidate_name": "Full name of candidate",
+  "candidate_name": "Full name",
   "email": "Email address",
-  "phone": "Phone number with country code if available",
-  "skills": ["Array", "of", "skills"],
-  "total_experience": number (total years of experience, 0 if fresher),
-  "relevant_experience": number (years relevant to current role),
-  "education": "Highest qualification with institution",
-  "current_role": "Current job title",
-  "current_company": "Current employer name",
+  "phone": "Phone number",
+  "current_role": "Current/Latest job title",
+  "current_company": "Current/Latest employer",
   "location": "Current city/location",
   "notice_period": "Notice period if mentioned",
-  "current_salary": number or null (annual in INR if mentioned),
-  "expected_salary": number or null (annual in INR if mentioned)
+  "current_salary": number or null (annual INR),
+  "expected_salary": number or null (annual INR),
+
+  "total_experience": number (total years, calculate carefully from work history),
+  "relevant_experience": number (years relevant to this specific job),
+
+  "skills": ["ALL technical skills mentioned in resume - extract everything"],
+
+  "skill_experience": {
+    // For ALL skills from resume AND required skills, provide years of experience
+    // Example: {"React": 3, "Node.js": 2, "Python": "No", "Java": 5}
+    // Use number for years, "No" if skill not present in resume
+    // Extract experience for EVERY skill mentioned in resume
+  },
+
+  "work_history": [
+    // Extract ALL companies worked at (current + previous)
+    {
+      "company": "Company name",
+      "role": "Job title/designation",
+      "duration": "Jan 2020 - Present or 2 years",
+      "years": number (years worked),
+      "projects": ["Project 1 name", "Project 2 name"] // Projects worked on at this company
+    }
+  ],
+
+  "projects": [
+    // Any standalone projects or if projects not linked to specific company
+    {
+      "name": "Project name",
+      "description": "Brief description",
+      "technologies": ["Tech1", "Tech2"]
+    }
+  ],
+
+  "education_details": [
+    // ALL education - college AND school
+    {
+      "degree": "B.Tech in Computer Science / 12th Standard / 10th Standard",
+      "institution": "College or School name",
+      "year": "2020 or 2018-2020",
+      "type": "college" | "school" | "certification"
+    }
+  ],
+
+  "education": "Highest qualification summary",
+
+  "matching_analysis": {
+    "skills_match_score": number 0-100 (how well candidate's skills match requirements),
+    "experience_match_score": number 0-100 (how well experience matches),
+    "overall_fit_score": number 0-100 (overall job fit considering everything),
+    "matched_skills": ["list of required skills the candidate HAS"],
+    "missing_skills": ["list of required skills the candidate LACKS"],
+    "strengths": ["2-3 key strengths for this role"],
+    "concerns": ["any concerns or gaps"],
+    "recommendation": "SHORTLIST" | "HOLD" | "REJECT",
+    "recommendation_reason": "Brief explanation of recommendation"
+  }
 }
 
-Be accurate - only extract what is clearly stated in the resume.`;
+=== SCORING GUIDELINES ===
+**Skills Match (most important):**
+- Consider skill synonyms: React = ReactJS = React.js, Node = NodeJS = Node.js, etc.
+- Consider related skills: If needs React and has React Native, partial credit
+- Consider skill levels: Expert > Proficient > Familiar
+- Score: 90-100 if has 80%+ required skills, 70-89 if has 60%+ skills, 50-69 if has 40%+ skills, <50 otherwise
+
+**Experience Match:**
+- Within range = 100
+- Slightly below (within 1 year) = 80-90
+- Moderately below (1-2 years) = 60-80
+- Above range is usually fine = 85-95
+- Way below (>2 years) = 40-60
+
+**Overall Fit:**
+- Consider: skills relevance, experience level, career progression, role alignment
+- A React developer applying for React position = high fit
+- A Java developer applying for React position with some React = medium fit
+- Give benefit of doubt to candidates with transferable skills
+
+**Recommendation:**
+- SHORTLIST: Overall fit >= 70% AND has core required skills
+- HOLD: Overall fit 50-69% OR missing some important skills but has potential
+- REJECT: Overall fit < 50% OR missing critical required skills
+
+TODAY'S DATE: ${new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`;
 
         let extractedData: any = null;
 
-        // Use GPT-4 for text-based extraction (not vision API)
+        // Use GPT-4 for intelligent extraction and matching
         const extractionCompletion = await openai.chat.completions.create({
-          model: 'gpt-4o',
+          model: 'gpt-4o-mini',
           messages: [
             {
               role: 'user',
-              content: extractionPrompt
+              content: extractionAndMatchingPrompt
             }
           ],
           response_format: { type: 'json_object' },
-          max_tokens: 2000,
+          max_tokens: 4000,
         });
 
         const extractionContent = extractionCompletion.choices[0].message.content || '{}';
         extractedData = JSON.parse(extractionContent);
 
-        // Step 2: Match against JD and calculate score
-        const jdSkills = (vacancy.skills_required || '').split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
-        const candidateSkills = (extractedData.skills || []).map((s: string) => s.toLowerCase());
-        const expMin = vacancy.experience_min || 0;
-        const expMax = vacancy.experience_max || 99;
-        const jdLocation = (vacancy.location || '').toLowerCase();
-        const candidateExp = extractedData.total_experience || 0;
-        const candidateLocation = (extractedData.location || '').toLowerCase();
+        // Get AI's matching analysis
+        const aiAnalysis = extractedData.matching_analysis || {};
 
-        // Calculate skill match (40% weight)
-        const matchingSkills = candidateSkills.filter((s: string) =>
-          jdSkills.some((js: string) => js.includes(s) || s.includes(js))
-        );
-        const skillScore = jdSkills.length > 0 ? (matchingSkills.length / jdSkills.length) * 100 : 50;
+        console.log('=== AI SCREENING ANALYSIS ===');
+        console.log('Candidate:', extractedData.candidate_name);
+        console.log('Total Experience:', extractedData.total_experience, 'years');
+        console.log('Relevant Experience:', extractedData.relevant_experience, 'years');
+        console.log('Skills Match Score:', aiAnalysis.skills_match_score);
+        console.log('Experience Match Score:', aiAnalysis.experience_match_score);
+        console.log('Overall Fit Score:', aiAnalysis.overall_fit_score);
+        console.log('Matched Skills:', aiAnalysis.matched_skills);
+        console.log('Missing Skills:', aiAnalysis.missing_skills);
+        console.log('AI Recommendation:', aiAnalysis.recommendation);
+        console.log('Reason:', aiAnalysis.recommendation_reason);
 
-        // Calculate experience match (35% weight)
-        let expScore = 0;
-        if (candidateExp >= expMin && candidateExp <= expMax) {
-          expScore = 100;
-        } else if (candidateExp < expMin) {
-          expScore = Math.max(0, 100 - (expMin - candidateExp) * 20);
-        } else {
-          expScore = Math.max(60, 100 - (candidateExp - expMax) * 10);
+        // Use AI's overall fit score as the match score
+        const matchScore = aiAnalysis.overall_fit_score || 50;
+
+        // Use AI's analysis for strong matches and gaps
+        const strongMatches: string[] = aiAnalysis.strengths || [];
+        if (aiAnalysis.matched_skills && aiAnalysis.matched_skills.length > 0) {
+          strongMatches.unshift(`${aiAnalysis.matched_skills.length} required skills matched: ${aiAnalysis.matched_skills.slice(0, 4).join(', ')}${aiAnalysis.matched_skills.length > 4 ? '...' : ''}`);
         }
 
-        // Calculate location match (15% weight)
-        const locationScore = jdLocation && candidateLocation.includes(jdLocation) ? 100 :
-                              jdLocation ? 50 : 75;
+        const gaps: string[] = aiAnalysis.concerns || [];
+        if (aiAnalysis.missing_skills && aiAnalysis.missing_skills.length > 0) {
+          gaps.unshift(`Missing skills: ${aiAnalysis.missing_skills.slice(0, 4).join(', ')}${aiAnalysis.missing_skills.length > 4 ? '...' : ''}`);
+        }
 
-        // Calculate role relevance (10% weight)
-        const roleScore = (vacancy.title || '').toLowerCase().includes((extractedData.current_role || '').toLowerCase()) ||
-                          (extractedData.current_role || '').toLowerCase().includes((vacancy.title || '').toLowerCase()) ? 100 : 60;
-
-        // Final weighted score
-        const matchScore = Math.round(
-          skillScore * 0.40 +
-          expScore * 0.35 +
-          locationScore * 0.15 +
-          roleScore * 0.10
-        );
-
-        // Identify strong matches
-        const strongMatches: string[] = [];
-        if (skillScore >= 70) strongMatches.push(`${matchingSkills.length}/${jdSkills.length} required skills matched`);
-        if (expScore === 100) strongMatches.push(`Experience (${candidateExp} yrs) within range`);
-        if (locationScore === 100) strongMatches.push('Location match');
-        if (roleScore === 100) strongMatches.push('Role relevance high');
-
-        // Identify gaps
-        const gaps: string[] = [];
-        const missingSkills = jdSkills.filter((s: string) => !candidateSkills.some((cs: string) => cs.includes(s) || s.includes(cs)));
-        if (missingSkills.length > 0) gaps.push(`Missing skills: ${missingSkills.slice(0, 3).join(', ')}${missingSkills.length > 3 ? '...' : ''}`);
-        if (candidateExp < expMin) gaps.push(`Experience below minimum (${candidateExp} < ${expMin} yrs)`);
-        if (candidateExp > expMax) gaps.push(`Experience above range (${candidateExp} > ${expMax} yrs)`);
-        if (locationScore < 100 && jdLocation) gaps.push(`Location mismatch (${extractedData.location} vs ${vacancy.location})`);
-
-        // Classify candidate
+        // Classify candidate - Use AI recommendation with score as backup
         let classification: 'shortlisted' | 'hold' | 'rejected';
         let rejectionReason: string | undefined;
 
-        if (matchScore >= 70) {
+        // First, use AI's recommendation if available
+        const aiRecommendation = (aiAnalysis.recommendation || '').toUpperCase();
+        if (aiRecommendation === 'SHORTLIST') {
           classification = 'shortlisted';
-        } else if (matchScore >= 50) {
+        } else if (aiRecommendation === 'HOLD') {
           classification = 'hold';
-        } else {
+        } else if (aiRecommendation === 'REJECT') {
           classification = 'rejected';
-          rejectionReason = gaps.length > 0 ? gaps[0] : 'Overall match score below threshold';
+          rejectionReason = aiAnalysis.recommendation_reason || 'Does not meet job requirements';
+        } else {
+          // Fallback to score-based classification
+          if (matchScore >= 70) {
+            classification = 'shortlisted';
+          } else if (matchScore >= 50) {
+            classification = 'hold';
+          } else {
+            classification = 'rejected';
+            rejectionReason = gaps.length > 0 ? gaps[0] : 'Overall match score below threshold';
+          }
         }
 
-        // Generate HR-friendly summary
-        const summary = `${extractedData.candidate_name || 'Candidate'} is a ${candidateExp}-year experienced ${extractedData.current_role || 'professional'} from ${extractedData.current_company || 'N/A'}. ` +
-          `${strongMatches.length > 0 ? 'Strengths: ' + strongMatches.join('; ') + '. ' : ''}` +
-          `${gaps.length > 0 ? 'Areas of concern: ' + gaps.join('; ') + '.' : ''}`;
+        // Generate HR-friendly summary using AI's analysis
+        const candidateExp = extractedData.total_experience || 0;
+        const summary = aiAnalysis.recommendation_reason ||
+          `${extractedData.candidate_name || 'Candidate'} is a ${candidateExp}-year experienced ${extractedData.current_role || 'professional'} from ${extractedData.current_company || 'N/A'}. ` +
+          `${strongMatches.length > 0 ? 'Strengths: ' + strongMatches.slice(0, 2).join('; ') + '. ' : ''}` +
+          `${gaps.length > 0 ? 'Concerns: ' + gaps.slice(0, 2).join('; ') + '.' : ''}`;
+
+        console.log(`=== FINAL RESULT: ${extractedData.candidate_name} ===`);
+        console.log(`Score: ${matchScore}%, Classification: ${classification.toUpperCase()}`);
 
         screeningResults.push({
           file_name: file.originalname,
@@ -2329,6 +2750,11 @@ Be accurate - only extract what is clearly stated in the resume.`;
             notice_period: extractedData.notice_period,
             current_salary: extractedData.current_salary,
             expected_salary: extractedData.expected_salary,
+            skill_experience: extractedData.skill_experience || {},
+            // New fields for detailed view
+            work_history: extractedData.work_history || [],
+            projects: extractedData.projects || [],
+            education_details: extractedData.education_details || [],
           },
           match_score: matchScore,
           classification,
@@ -2337,6 +2763,7 @@ Be accurate - only extract what is clearly stated in the resume.`;
           summary,
           rejection_reason: rejectionReason,
           resume_text: resumeText,
+          ai_analysis: aiAnalysis, // Include full AI analysis for reference
         });
 
       } catch (fileError: any) {
@@ -2418,15 +2845,15 @@ router.post('/screen-resumes/confirm', authenticateToken, async (req, res) => {
       const firstName = nameParts[0] || 'Unknown';
       const lastName = nameParts.slice(1).join(' ') || '';
 
-      // Insert candidate
+      // Insert candidate with skill experience data
       const result = db.prepare(`
         INSERT INTO candidates (
           vacancy_id, first_name, last_name, email, phone,
           current_company, current_designation, current_salary, expected_salary,
           experience_years, notice_period, skills, education,
           resume_path, resume_extracted_text, source, status,
-          screening_score, screening_notes, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          screening_score, screening_notes, skill_experience_data, screening_date, city, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         vacancy_id,
         firstName,
@@ -2443,7 +2870,7 @@ router.post('/screen-resumes/confirm', authenticateToken, async (req, res) => {
         resume.education || null,
         candidate.file_path || null,
         candidate.resume_text || null,
-        'resume_screening',
+        'other', // source - 'resume_screening' is not in allowed values, using 'other'
         status,
         candidate.match_score || 0,
         JSON.stringify({
@@ -2452,12 +2879,19 @@ router.post('/screen-resumes/confirm', authenticateToken, async (req, res) => {
           gaps: candidate.gaps,
           classification: candidate.classification
         }),
+        JSON.stringify(resume.skill_experience || {}), // Skill-wise experience data
+        new Date().toISOString().split('T')[0], // Screening date
+        resume.location || null, // Store location in city field
         userId
       );
 
       const candidateId = result.lastInsertRowid as number;
-      const newCandidate = db.prepare('SELECT * FROM candidates WHERE id = ?').get(candidateId);
-      addedCandidates.push(newCandidate);
+      const newCandidate = db.prepare('SELECT * FROM candidates WHERE id = ?').get(candidateId) as any;
+      // Include selectedForEmail flag from the request
+      addedCandidates.push({
+        ...newCandidate,
+        selectedForEmail: candidate.selectedForEmail || false
+      });
     }
 
     res.json({
@@ -2471,6 +2905,1725 @@ router.post('/screen-resumes/confirm', authenticateToken, async (req, res) => {
   } catch (error: any) {
     console.error('Error adding screened candidates:', error);
     res.status(500).json({ error: 'Failed to add candidates', details: error.message });
+  }
+});
+
+// =====================================================
+// INTEREST EMAIL WORKFLOW
+// =====================================================
+
+// Helper function to build interest email body
+function buildInterestEmailBody(candidate: any, formUrl: string): string {
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+    .header h1 { margin: 0; font-size: 24px; }
+    .content { padding: 30px; background: #ffffff; border: 1px solid #e5e7eb; }
+    .button { display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%); color: white !important; padding: 14px 32px; text-decoration: none; border-radius: 8px; margin: 20px 0; font-weight: bold; }
+    .button:hover { opacity: 0.9; }
+    .info-box { background: #f3f4f6; border-radius: 8px; padding: 20px; margin: 20px 0; }
+    .info-box ul { margin: 10px 0; padding-left: 20px; }
+    .info-box li { margin: 8px 0; }
+    .footer { padding: 20px; font-size: 12px; color: #666; text-align: center; background: #f9fafb; border-radius: 0 0 8px 8px; border: 1px solid #e5e7eb; border-top: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Phoneme Solutions Pvt. Ltd.</h1>
+    </div>
+    <div class="content">
+      <p>Dear <strong>${candidate.first_name} ${candidate.last_name || ''}</strong>,</p>
+
+      <p>We have reviewed your profile for the <strong>${candidate.vacancy_title || 'open'}</strong> position at <strong>Phoneme Solutions Pvt. Ltd.</strong> and we are interested in taking your application forward.</p>
+
+      <p><strong>Are you interested in this opportunity?</strong></p>
+
+      <p>If <strong>YES</strong>, please fill out the short form below to confirm your interest and provide some details we need to schedule an interview.</p>
+
+      <p style="text-align: center;">
+        <a href="${formUrl}" class="button">Yes, I'm Interested - Fill Form</a>
+      </p>
+
+      <div class="info-box">
+        <p><strong>The form will ask about:</strong></p>
+        <ul>
+          <li>Confirmation of your interest (Yes/No)</li>
+          <li>Current CTC (in LPA)</li>
+          <li>Expected CTC (in LPA)</li>
+          <li>Notice Period</li>
+          <li>Interview Availability</li>
+        </ul>
+      </div>
+
+      <p style="color: #666; font-style: italic;">If you are <strong>not interested</strong> in this role, you can let us know by clicking the button above and selecting "No, Thanks" on the form.</p>
+
+      <p>We look forward to hearing from you!</p>
+
+      <p>Best regards,<br>
+      <strong>HR Team</strong><br>
+      Phoneme Solutions Pvt. Ltd.</p>
+    </div>
+    <div class="footer">
+      <p>This email was sent regarding your application for ${candidate.vacancy_title || 'a position'} at Phoneme Solutions.</p>
+      <p>If you did not apply for this position or are not interested, please ignore this email.</p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+// Send interest email to candidate (Authenticated)
+router.post('/candidates/:id/send-interest-email', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { gmail_connection_id } = req.body;
+    const userId = req.user!.userId;
+
+    if (!gmail_connection_id) {
+      return res.status(400).json({ error: 'gmail_connection_id is required' });
+    }
+
+    // Get candidate with vacancy details
+    const candidate = db.prepare(`
+      SELECT c.*, v.title as vacancy_title, v.location as vacancy_location, v.department as vacancy_department
+      FROM candidates c
+      LEFT JOIN vacancies v ON c.vacancy_id = v.id
+      WHERE c.id = ? AND c.isActive = 1
+    `).get(id) as any;
+
+    if (!candidate) {
+      return res.status(404).json({ error: 'Candidate not found' });
+    }
+
+    if (!candidate.email) {
+      return res.status(400).json({ error: 'Candidate does not have an email address' });
+    }
+
+    // Check if email already sent
+    if (candidate.interest_email_sent_date) {
+      return res.status(400).json({
+        error: 'Interest email already sent',
+        sent_date: candidate.interest_email_sent_date
+      });
+    }
+
+    // Generate unique form token
+    const formToken = crypto.randomUUID();
+
+    // Get Gmail connection
+    const gmailConnection = db.prepare(`
+      SELECT * FROM gmail_connections WHERE id = ? AND is_active = 1
+    `).get(gmail_connection_id) as any;
+
+    if (!gmailConnection) {
+      return res.status(400).json({ error: 'Gmail connection not found or inactive' });
+    }
+
+    // Build secure localhost link for candidate response page
+    const formUrl = `http://localhost:5173/candidate-response/${formToken}`;
+
+    // Build email body
+    const emailBody = buildInterestEmailBody(candidate, formUrl);
+
+    // Send to actual candidate email (HR sends from their Gmail account)
+    const recipientEmail = candidate.email;
+    const recipientName = `${candidate.first_name} ${candidate.last_name || ''}`.trim();
+
+    // Send email via Gmail API (from HR's connected Gmail account)
+    console.log('Getting Gmail client for connection:', gmail_connection_id);
+    const gmail = await getGmailClient(gmail_connection_id);
+    console.log('Gmail client obtained successfully');
+
+    const emailLines = [
+      `To: ${recipientName} <${recipientEmail}>`,
+      'Content-Type: text/html; charset=utf-8',
+      'MIME-Version: 1.0',
+      `Subject: Interest Confirmation - ${candidate.vacancy_title || 'Position'} at Phoneme Solutions`,
+      '',
+      emailBody
+    ];
+
+    const email = emailLines.join('\r\n');
+    const encodedEmail = Buffer.from(email).toString('base64')
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+    console.log('Sending email to:', recipientEmail);
+    await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: { raw: encodedEmail }
+    });
+    console.log('Email sent successfully');
+
+    // Update candidate with form token and sent date
+    db.prepare(`
+      UPDATE candidates
+      SET form_token = ?,
+          interest_email_sent_date = datetime('now'),
+          is_interested = 'pending',
+          updatedAt = datetime('now')
+      WHERE id = ?
+    `).run(formToken, id);
+
+    // Log workflow action
+    db.prepare(`
+      INSERT INTO recruitment_workflow_log
+      (candidate_id, action, action_type, details, performed_by, is_automated)
+      VALUES (?, ?, ?, ?, ?, 0)
+    `).run(
+      id,
+      'Interest email sent',
+      'status_change',
+      JSON.stringify({
+        form_token: formToken,
+        sent_to: recipientEmail,
+        sent_from: gmailConnection.email
+      }),
+      userId
+    );
+
+    res.json({
+      success: true,
+      message: 'Interest email sent successfully',
+      form_token: formToken,
+      sent_at: new Date().toISOString(),
+      sent_to: recipientEmail,
+      sent_from: gmailConnection.email,
+      note: `Email sent to ${recipientEmail} from ${gmailConnection.email}`
+    });
+
+  } catch (error: any) {
+    console.error('Error sending interest email:', error);
+    console.error('Error details:', error.response?.data || error.message);
+    const errorMessage = error.response?.data?.error?.message
+      || error.message
+      || 'Failed to send interest email';
+    res.status(500).json({ error: errorMessage, details: error.response?.data });
+  }
+});
+
+// Batch send interest emails to multiple shortlisted candidates (Authenticated)
+router.post('/candidates/batch-send-interest-emails', authenticateToken, async (req, res) => {
+  try {
+    const { candidate_ids, gmail_connection_id } = req.body;
+    const userId = req.user!.userId;
+
+    if (!gmail_connection_id) {
+      return res.status(400).json({ error: 'gmail_connection_id is required' });
+    }
+
+    if (!candidate_ids || !Array.isArray(candidate_ids) || candidate_ids.length === 0) {
+      return res.status(400).json({ error: 'candidate_ids array is required and must not be empty' });
+    }
+
+    // Get Gmail connection
+    const gmailConnection = db.prepare(`
+      SELECT * FROM gmail_connections WHERE id = ? AND is_active = 1
+    `).get(gmail_connection_id) as any;
+
+    if (!gmailConnection) {
+      return res.status(400).json({ error: 'Gmail connection not found or inactive' });
+    }
+
+    // Get Gmail client once for all emails
+    const gmail = await getGmailClient(gmail_connection_id);
+
+    const results: Array<{
+      candidate_id: number;
+      email: string;
+      status: 'sent' | 'skipped' | 'failed';
+      message?: string;
+    }> = [];
+
+    for (const candidateId of candidate_ids) {
+      try {
+        // Get candidate with vacancy details
+        const candidate = db.prepare(`
+          SELECT c.*, v.title as vacancy_title, v.location as vacancy_location, v.department as vacancy_department
+          FROM candidates c
+          LEFT JOIN vacancies v ON c.vacancy_id = v.id
+          WHERE c.id = ? AND c.isActive = 1
+        `).get(candidateId) as any;
+
+        if (!candidate) {
+          results.push({
+            candidate_id: candidateId,
+            email: '',
+            status: 'skipped',
+            message: 'Candidate not found'
+          });
+          continue;
+        }
+
+        if (!candidate.email) {
+          results.push({
+            candidate_id: candidateId,
+            email: '',
+            status: 'skipped',
+            message: 'No email address'
+          });
+          continue;
+        }
+
+        // Skip if email already sent
+        if (candidate.interest_email_sent_date) {
+          results.push({
+            candidate_id: candidateId,
+            email: candidate.email,
+            status: 'skipped',
+            message: 'Email already sent'
+          });
+          continue;
+        }
+
+        // Generate unique form token
+        const formToken = crypto.randomUUID();
+
+        // Build secure localhost link for candidate response page
+        const formUrl = `http://localhost:5173/candidate-response/${formToken}`;
+
+        // Build email body
+        const emailBody = buildInterestEmailBody(candidate, formUrl);
+
+        // Send to actual candidate email
+        const recipientEmail = candidate.email;
+        const recipientName = `${candidate.first_name} ${candidate.last_name || ''}`.trim();
+
+        const emailLines = [
+          `To: ${recipientName} <${recipientEmail}>`,
+          'Content-Type: text/html; charset=utf-8',
+          'MIME-Version: 1.0',
+          `Subject: Interest Confirmation - ${candidate.vacancy_title || 'Position'} at Phoneme Solutions`,
+          '',
+          emailBody
+        ];
+
+        const email = emailLines.join('\r\n');
+        const encodedEmail = Buffer.from(email).toString('base64')
+          .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+        await gmail.users.messages.send({
+          userId: 'me',
+          requestBody: { raw: encodedEmail }
+        });
+
+        // Update candidate with form token and sent date
+        db.prepare(`
+          UPDATE candidates
+          SET form_token = ?,
+              interest_email_sent_date = datetime('now'),
+              is_interested = 'pending',
+              updatedAt = datetime('now')
+          WHERE id = ?
+        `).run(formToken, candidateId);
+
+        // Log workflow action
+        db.prepare(`
+          INSERT INTO recruitment_workflow_log
+          (candidate_id, action, action_type, details, performed_by, is_automated)
+          VALUES (?, ?, ?, ?, ?, 1)
+        `).run(
+          candidateId,
+          'Interest email sent (batch)',
+          'status_change',
+          JSON.stringify({
+            form_token: formToken,
+            sent_to: recipientEmail,
+            sent_from: gmailConnection.email,
+            batch_send: true
+          }),
+          userId
+        );
+
+        results.push({
+          candidate_id: candidateId,
+          email: recipientEmail,
+          status: 'sent',
+          message: 'Email sent successfully'
+        });
+
+      } catch (emailError: any) {
+        console.error(`Error sending email to candidate ${candidateId}:`, emailError);
+        results.push({
+          candidate_id: candidateId,
+          email: '',
+          status: 'failed',
+          message: emailError.message || 'Failed to send email'
+        });
+      }
+    }
+
+    const sentCount = results.filter(r => r.status === 'sent').length;
+    const skippedCount = results.filter(r => r.status === 'skipped').length;
+    const failedCount = results.filter(r => r.status === 'failed').length;
+
+    res.json({
+      success: true,
+      message: `Batch email sending complete: ${sentCount} sent, ${skippedCount} skipped, ${failedCount} failed`,
+      sent_count: sentCount,
+      skipped_count: skippedCount,
+      failed_count: failedCount,
+      details: results
+    });
+
+  } catch (error: any) {
+    console.error('Error in batch send interest emails:', error);
+    res.status(500).json({
+      error: error.message || 'Failed to send batch emails',
+      details: error.response?.data
+    });
+  }
+});
+
+// Google Form Webhook - PUBLIC ENDPOINT (No Authentication)
+// This endpoint receives form submissions from Google Apps Script
+router.post('/webhooks/form-response', async (req, res) => {
+  try {
+    const {
+      token,                    // Unique form token
+      email,                    // Candidate email
+      is_interested,            // yes/no
+      current_ctc,              // Number in LPA
+      expected_ctc,             // Number in LPA
+      notice_period,            // String like "30 days", "Immediate"
+      interview_availability,   // "tomorrow" or "preferred_date"
+      preferred_date,           // ISO date string if preferred_date selected
+      preferred_time            // Time string if preferred_date selected
+    } = req.body;
+
+    console.log('Received form response:', { token, email, is_interested });
+
+    // Find candidate by token or email
+    let candidate: any = null;
+
+    if (token) {
+      candidate = db.prepare(`
+        SELECT * FROM candidates WHERE form_token = ? AND isActive = 1
+      `).get(token);
+    }
+
+    // Fallback: find by email if token not provided or not found
+    if (!candidate && email) {
+      candidate = db.prepare(`
+        SELECT * FROM candidates
+        WHERE email = ? AND isActive = 1 AND is_interested = 'pending'
+        ORDER BY updatedAt DESC LIMIT 1
+      `).get(email);
+    }
+
+    if (!candidate) {
+      console.error('Candidate not found. Token:', token, 'Email:', email);
+      return res.status(404).json({ error: 'Candidate not found' });
+    }
+
+    // Check if already responded
+    if (candidate.form_response_date) {
+      return res.status(400).json({
+        error: 'Response already submitted',
+        response_date: candidate.form_response_date
+      });
+    }
+
+    // Convert CTC to internal format (stored in annual amount, not LPA)
+    // If CTC is in LPA, multiply by 100000 to get annual amount
+    const currentSalary = current_ctc ? parseFloat(current_ctc) * 100000 : candidate.current_salary;
+    const expectedSalary = expected_ctc ? parseFloat(expected_ctc) * 100000 : candidate.expected_salary;
+
+    // Build preferred interview datetime
+    let preferredInterviewDate = null;
+    if (interview_availability === 'preferred_date' && preferred_date) {
+      preferredInterviewDate = preferred_time
+        ? `${preferred_date}T${preferred_time}`
+        : preferred_date;
+    }
+
+    // Normalize is_interested value
+    const normalizedInterest = is_interested?.toLowerCase() === 'yes' ? 'yes' : 'no';
+
+    // Update candidate with form response
+    db.prepare(`
+      UPDATE candidates
+      SET is_interested = ?,
+          current_salary = ?,
+          expected_salary = ?,
+          notice_period = ?,
+          interview_availability = ?,
+          preferred_interview_date = ?,
+          form_response_date = datetime('now'),
+          status = CASE WHEN ? = 'yes' THEN 'interview_scheduled' ELSE status END,
+          updatedAt = datetime('now')
+      WHERE id = ?
+    `).run(
+      normalizedInterest,
+      currentSalary,
+      expectedSalary,
+      notice_period || candidate.notice_period,
+      interview_availability || 'tomorrow',
+      preferredInterviewDate,
+      normalizedInterest,
+      candidate.id
+    );
+
+    // Auto-create interview if candidate is interested
+    let interviewCreated = false;
+    let interviewDate = '';
+    let interviewTime = '';
+
+    if (normalizedInterest === 'yes') {
+      // Get a default interviewer (first admin or any active user)
+      const defaultInterviewer = db.prepare(`
+        SELECT id FROM users WHERE isActive = 1 ORDER BY role = 'admin' DESC, id ASC LIMIT 1
+      `).get() as { id: number } | undefined;
+
+      if (defaultInterviewer) {
+        // Calculate interview date
+        if (interview_availability === 'preferred_date' && preferred_date) {
+          interviewDate = preferred_date;
+          interviewTime = preferred_time || '10:00';
+        } else {
+          // "tomorrow" - use next business day
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          // Skip weekends
+          while (tomorrow.getDay() === 0 || tomorrow.getDay() === 6) {
+            tomorrow.setDate(tomorrow.getDate() + 1);
+          }
+          interviewDate = tomorrow.toISOString().split('T')[0];
+          interviewTime = ''; // HR will set the time
+        }
+
+        // Create interview entry (always use 'scheduled' status)
+        db.prepare(`
+          INSERT INTO interviews (
+            candidate_id, vacancy_id, interviewer_id, interview_type,
+            scheduled_date, scheduled_time, duration_minutes,
+            status, round_number, created_by, notes
+          ) VALUES (?, ?, ?, 'hr', ?, ?, 60, 'scheduled', 1, ?, ?)
+        `).run(
+          candidate.id,
+          candidate.vacancy_id,
+          defaultInterviewer.id,
+          interviewDate,
+          interviewTime || '00:00',
+          defaultInterviewer.id,
+          interviewTime
+            ? 'Auto-scheduled based on candidate availability'
+            : 'TIME_PENDING - Candidate available tomorrow - HR to set time'
+        );
+
+        interviewCreated = true;
+      }
+    }
+
+    // Log workflow action
+    db.prepare(`
+      INSERT INTO recruitment_workflow_log
+      (candidate_id, action, action_type, details, performed_by, is_automated)
+      VALUES (?, ?, ?, ?, NULL, 1)
+    `).run(
+      candidate.id,
+      `Form response received: ${normalizedInterest === 'yes' ? 'Interested' : 'Not Interested'}${interviewCreated ? ' - Interview auto-scheduled' : ''}`,
+      'status_change',
+      JSON.stringify({
+        is_interested: normalizedInterest,
+        current_ctc,
+        expected_ctc,
+        notice_period,
+        interview_availability,
+        preferred_date: preferredInterviewDate,
+        interview_created: interviewCreated,
+        interview_date: interviewDate,
+        interview_time: interviewTime
+      })
+    );
+
+    console.log('Form response processed for candidate:', candidate.id, 'Interview created:', interviewCreated);
+
+    // Return success (Google Apps Script expects 200 OK)
+    res.json({
+      success: true,
+      message: 'Response recorded successfully',
+      candidate_id: candidate.id,
+      interview_created: interviewCreated
+    });
+
+  } catch (error: any) {
+    console.error('Error processing form response:', error);
+    res.status(500).json({ error: 'Failed to process response', details: error.message });
+  }
+});
+
+// Manual update of interest details by HR (Authenticated)
+router.patch('/candidates/:id/interest-details', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.userId;
+    const {
+      is_interested,
+      current_salary,
+      expected_salary,
+      notice_period,
+      interview_availability,
+      preferred_interview_date
+    } = req.body;
+
+    const candidate = db.prepare(`
+      SELECT * FROM candidates WHERE id = ? AND isActive = 1
+    `).get(id) as any;
+
+    if (!candidate) {
+      return res.status(404).json({ error: 'Candidate not found' });
+    }
+
+    // Build update query dynamically
+    const updates: string[] = [];
+    const values: any[] = [];
+
+    if (is_interested !== undefined) {
+      updates.push('is_interested = ?');
+      values.push(is_interested);
+    }
+    if (current_salary !== undefined) {
+      updates.push('current_salary = ?');
+      values.push(current_salary);
+    }
+    if (expected_salary !== undefined) {
+      updates.push('expected_salary = ?');
+      values.push(expected_salary);
+    }
+    if (notice_period !== undefined) {
+      updates.push('notice_period = ?');
+      values.push(notice_period);
+    }
+    if (interview_availability !== undefined) {
+      updates.push('interview_availability = ?');
+      values.push(interview_availability);
+    }
+    if (preferred_interview_date !== undefined) {
+      updates.push('preferred_interview_date = ?');
+      values.push(preferred_interview_date);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    updates.push("updatedAt = datetime('now')");
+    values.push(id);
+
+    db.prepare(`
+      UPDATE candidates SET ${updates.join(', ')} WHERE id = ?
+    `).run(...values);
+
+    // Log manual update
+    db.prepare(`
+      INSERT INTO recruitment_workflow_log
+      (candidate_id, action, action_type, details, performed_by, is_automated)
+      VALUES (?, ?, ?, ?, ?, 0)
+    `).run(
+      id,
+      'Interest details manually updated by HR',
+      'manual_override',
+      JSON.stringify(req.body),
+      userId
+    );
+
+    const updatedCandidate = db.prepare('SELECT * FROM candidates WHERE id = ?').get(id);
+    res.json(updatedCandidate);
+
+  } catch (error: any) {
+    console.error('Error updating interest details:', error);
+    res.status(500).json({ error: 'Failed to update interest details', details: error.message });
+  }
+});
+
+// =====================================================
+// CANDIDATE RESPONSE PAGE ENDPOINTS (PUBLIC - No Auth)
+// =====================================================
+
+// Get candidate info by token (for response page)
+router.get('/candidate-response/:token', (req, res) => {
+  try {
+    const { token } = req.params;
+
+    if (!token) {
+      return res.status(400).json({ error: 'Token is required' });
+    }
+
+    const candidate = db.prepare(`
+      SELECT
+        c.id,
+        c.first_name,
+        c.last_name,
+        c.email,
+        c.form_token,
+        c.is_interested,
+        c.form_response_date,
+        c.interest_email_sent_date,
+        v.title as vacancy_title,
+        v.department,
+        v.location
+      FROM candidates c
+      LEFT JOIN vacancies v ON c.vacancy_id = v.id
+      WHERE c.form_token = ? AND c.isActive = 1
+    `).get(token) as any;
+
+    if (!candidate) {
+      return res.status(404).json({ error: 'Invalid or expired link' });
+    }
+
+    // Check if already responded
+    if (candidate.form_response_date) {
+      return res.status(200).json({
+        already_submitted: true,
+        message: 'You have already submitted your response. Thank you!',
+        submitted_at: candidate.form_response_date
+      });
+    }
+
+    res.json({
+      candidate: {
+        first_name: candidate.first_name,
+        last_name: candidate.last_name,
+        email: candidate.email,
+        vacancy_title: candidate.vacancy_title,
+        department: candidate.department,
+        location: candidate.location
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Error fetching candidate for response:', error);
+    res.status(500).json({ error: 'Failed to load page' });
+  }
+});
+
+// Submit candidate response (public)
+router.post('/candidate-response/:token', (req, res) => {
+  try {
+    const { token } = req.params;
+    const {
+      is_interested,
+      current_ctc,
+      expected_ctc,
+      notice_period,
+      interview_availability,
+      preferred_interview_date,
+      preferred_interview_time
+    } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ error: 'Token is required' });
+    }
+
+    // Validate required fields
+    if (!is_interested) {
+      return res.status(400).json({ error: 'Please indicate if you are interested' });
+    }
+
+    const candidate = db.prepare(`
+      SELECT * FROM candidates WHERE form_token = ? AND isActive = 1
+    `).get(token) as any;
+
+    if (!candidate) {
+      return res.status(404).json({ error: 'Invalid or expired link' });
+    }
+
+    // Check if already responded
+    if (candidate.form_response_date) {
+      return res.status(400).json({
+        error: 'You have already submitted your response',
+        submitted_at: candidate.form_response_date
+      });
+    }
+
+    // Convert CTC from LPA to annual amount (stored in paisa/full amount)
+    const currentSalary = current_ctc ? parseFloat(current_ctc) * 100000 : null;
+    const expectedSalary = expected_ctc ? parseFloat(expected_ctc) * 100000 : null;
+
+    // Build preferred interview datetime
+    let preferredDate = null;
+    if (interview_availability === 'preferred_date' && preferred_interview_date) {
+      preferredDate = preferred_interview_time
+        ? `${preferred_interview_date}T${preferred_interview_time}`
+        : preferred_interview_date;
+    }
+
+    // Update candidate with response
+    db.prepare(`
+      UPDATE candidates
+      SET is_interested = ?,
+          current_salary = COALESCE(?, current_salary),
+          expected_salary = COALESCE(?, expected_salary),
+          notice_period = COALESCE(?, notice_period),
+          interview_availability = ?,
+          preferred_interview_date = ?,
+          form_response_date = datetime('now'),
+          status = CASE WHEN ? = 'yes' THEN 'interview_scheduled' ELSE status END,
+          updatedAt = datetime('now')
+      WHERE id = ?
+    `).run(
+      is_interested,
+      currentSalary,
+      expectedSalary,
+      notice_period,
+      interview_availability || 'tomorrow',
+      preferredDate,
+      is_interested,
+      candidate.id
+    );
+
+    // Auto-create interview if candidate is interested
+    let interviewCreated = false;
+    let interviewDate = '';
+    let interviewTime = '';
+
+    if (is_interested === 'yes') {
+      // Get a default interviewer (first admin or any active user)
+      const defaultInterviewer = db.prepare(`
+        SELECT id FROM users WHERE isActive = 1 ORDER BY role = 'admin' DESC, id ASC LIMIT 1
+      `).get() as { id: number } | undefined;
+
+      if (defaultInterviewer) {
+        // Calculate interview date
+        if (interview_availability === 'preferred_date' && preferred_interview_date) {
+          interviewDate = preferred_interview_date;
+          interviewTime = preferred_interview_time || '10:00';
+        } else {
+          // "tomorrow" - use next business day
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          // Skip weekends
+          while (tomorrow.getDay() === 0 || tomorrow.getDay() === 6) {
+            tomorrow.setDate(tomorrow.getDate() + 1);
+          }
+          interviewDate = tomorrow.toISOString().split('T')[0];
+          interviewTime = ''; // HR will set the time
+        }
+
+        // Create interview entry (always use 'scheduled' status)
+        db.prepare(`
+          INSERT INTO interviews (
+            candidate_id, vacancy_id, interviewer_id, interview_type,
+            scheduled_date, scheduled_time, duration_minutes,
+            status, round_number, created_by, notes
+          ) VALUES (?, ?, ?, 'hr', ?, ?, 60, 'scheduled', 1, ?, ?)
+        `).run(
+          candidate.id,
+          candidate.vacancy_id,
+          defaultInterviewer.id,
+          interviewDate,
+          interviewTime || '00:00',
+          defaultInterviewer.id,
+          interviewTime
+            ? 'Auto-scheduled based on candidate availability'
+            : 'TIME_PENDING - Candidate available tomorrow - HR to set time'
+        );
+
+        interviewCreated = true;
+      }
+    }
+
+    // Log the response
+    db.prepare(`
+      INSERT INTO recruitment_workflow_log
+      (candidate_id, action, action_type, details, performed_by, is_automated)
+      VALUES (?, ?, ?, ?, NULL, 1)
+    `).run(
+      candidate.id,
+      `Candidate responded: ${is_interested === 'yes' ? 'Interested' : 'Not Interested'}${interviewCreated ? ' - Interview auto-scheduled' : ''}`,
+      'status_change',
+      JSON.stringify({
+        is_interested,
+        current_ctc,
+        expected_ctc,
+        notice_period,
+        interview_availability,
+        preferred_interview_date: preferredDate,
+        interview_created: interviewCreated,
+        interview_date: interviewDate,
+        interview_time: interviewTime
+      })
+    );
+
+    console.log('Candidate response submitted:', candidate.id, is_interested, 'Interview created:', interviewCreated);
+
+    res.json({
+      success: true,
+      message: is_interested === 'yes'
+        ? interviewTime
+          ? `Thank you! Your interview has been scheduled for ${interviewDate} at ${interviewTime}. Our HR team will send you the details shortly.`
+          : 'Thank you! Your response has been recorded. Our HR team will contact you soon to confirm the interview time.'
+        : 'Thank you for letting us know. We wish you all the best in your future endeavors.'
+    });
+
+  } catch (error: any) {
+    console.error('Error submitting candidate response:', error);
+    res.status(500).json({ error: 'Failed to submit response' });
+  }
+});
+
+// =====================================================
+// HEAD PERSON REVIEW ROUTES
+// =====================================================
+
+// Send candidates for head person review (sends email to multiple head persons)
+router.post('/send-head-review', authenticateToken, async (req, res) => {
+  try {
+    const { vacancy_id, candidate_ids, reviewer_emails, gmail_connection_id } = req.body;
+    const userId = (req as any).user?.id;
+
+    console.log('Head review request:', { vacancy_id, candidate_ids, reviewer_emails: reviewer_emails?.length, gmail_connection_id, userId });
+
+    if (!vacancy_id || !candidate_ids?.length || !reviewer_emails?.length) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Get vacancy details
+    const vacancy = db.prepare(`
+      SELECT v.*, d.name as department_name
+      FROM vacancies v
+      LEFT JOIN (SELECT 'Engineering' as name) d ON 1=1
+      WHERE v.id = ? AND v.isActive = 1
+    `).get(vacancy_id) as any;
+
+    if (!vacancy) {
+      return res.status(404).json({ error: 'Vacancy not found' });
+    }
+
+    // Get candidates details
+    const candidateIdList = candidate_ids.join(',');
+    const candidates = db.prepare(`
+      SELECT id, first_name, last_name, email, phone, skills, experience_years,
+             current_salary, expected_salary, notice_period, current_company, city,
+             is_interested, interview_availability
+      FROM candidates
+      WHERE id IN (${candidateIdList}) AND isActive = 1
+    `).all() as any[];
+
+    if (candidates.length === 0) {
+      return res.status(404).json({ error: 'No candidates found' });
+    }
+
+    // Get Gmail connection
+    let gmailClient = null;
+    let senderEmail = '';
+    if (gmail_connection_id) {
+      try {
+        const gmailConnection = db.prepare('SELECT * FROM gmail_connections WHERE id = ? AND is_active = 1')
+          .get(gmail_connection_id) as any;
+        if (gmailConnection && gmailConnection.refresh_token) {
+          gmailClient = await getGmailClient(gmail_connection_id); // Pass ID, not object
+          senderEmail = gmailConnection.email;
+        }
+      } catch (gmailError: any) {
+        console.error('Gmail connection error:', gmailError.message);
+        // Continue without Gmail - will just create review links
+      }
+    }
+
+    const results: { email: string; success: boolean; token?: string; error?: string }[] = [];
+
+    for (const reviewerEmail of reviewer_emails) {
+      try {
+        // Generate unique token for each reviewer
+        const token = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7); // Valid for 7 days
+
+        // Save token to database
+        db.prepare(`
+          INSERT INTO head_review_tokens (token, vacancy_id, reviewer_email, reviewer_name, candidate_ids, sent_by, expires_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          token,
+          vacancy_id,
+          reviewerEmail.email || reviewerEmail,
+          reviewerEmail.name || '',
+          JSON.stringify(candidate_ids),
+          userId || 1, // Default to user 1 if no userId
+          expiresAt.toISOString()
+        );
+
+        // Build review link
+        const reviewLink = `http://localhost:5173/head-review/${token}`;
+
+        // Build candidates summary for email
+        let candidatesSummary = candidates.map((c, i) => `
+          ${i + 1}. ${c.first_name} ${c.last_name}
+             - Experience: ${c.experience_years || 'N/A'} years
+             - Current CTC: ${c.current_salary ? (c.current_salary / 100000).toFixed(1) + ' LPA' : 'N/A'}
+             - Expected CTC: ${c.expected_salary ? (c.expected_salary / 100000).toFixed(1) + ' LPA' : 'N/A'}
+             - Notice Period: ${c.notice_period || 'N/A'}
+             - Interest: ${c.is_interested === 'yes' ? 'Interested' : c.is_interested === 'no' ? 'Not Interested' : 'Pending'}
+        `).join('\n');
+
+        // Email content
+        const emailHtml = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <div style="background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%); padding: 20px; border-radius: 8px 8px 0 0;">
+              <h1 style="color: white; margin: 0;">Phoneme Solutions Pvt. Ltd.</h1>
+              <p style="color: #e0e7ff; margin: 5px 0 0;">Candidate Review Request</p>
+            </div>
+            <div style="background: #f8fafc; padding: 20px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
+              <p style="color: #334155;">Dear ${reviewerEmail.name || 'Hiring Manager'},</p>
+              <p style="color: #334155;">
+                We have shortlisted <strong>${candidates.length} candidate(s)</strong> for the
+                <strong>${vacancy.title}</strong> position. Please review their profiles and provide your availability for interviews.
+              </p>
+
+              <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin: 20px 0;">
+                <h3 style="color: #1e293b; margin-top: 0;">Candidates Summary:</h3>
+                <pre style="font-family: Arial, sans-serif; font-size: 13px; color: #475569; white-space: pre-wrap;">${candidatesSummary}</pre>
+              </div>
+
+              <div style="text-align: center; margin: 25px 0;">
+                <a href="${reviewLink}"
+                   style="display: inline-block; background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+                          color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+                  Review Candidates & Set Availability
+                </a>
+              </div>
+
+              <p style="color: #64748b; font-size: 13px;">
+                This link will expire in 7 days. You can select or deselect candidates for interview and
+                provide your availability time.
+              </p>
+
+              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+              <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                This is an automated email from Phoneme HR System.
+              </p>
+            </div>
+          </div>
+        `;
+
+        if (gmailClient) {
+          // Send via Gmail
+          const rawMessage = Buffer.from(
+            `From: ${senderEmail}\r\n` +
+            `To: ${reviewerEmail.email || reviewerEmail}\r\n` +
+            `Subject: Candidate Review Required - ${vacancy.title}\r\n` +
+            `MIME-Version: 1.0\r\n` +
+            `Content-Type: text/html; charset=utf-8\r\n\r\n` +
+            emailHtml
+          ).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+          await gmailClient.users.messages.send({
+            userId: 'me',
+            requestBody: { raw: rawMessage }
+          });
+
+          results.push({ email: reviewerEmail.email || reviewerEmail, success: true, token });
+        } else {
+          // No Gmail client - just save token and return link
+          results.push({
+            email: reviewerEmail.email || reviewerEmail,
+            success: true,
+            token,
+            error: 'Email not sent - no Gmail connection. Review link created.'
+          });
+        }
+
+      } catch (emailError: any) {
+        console.error('Error sending to reviewer:', reviewerEmail, emailError);
+        results.push({
+          email: reviewerEmail.email || reviewerEmail,
+          success: false,
+          error: emailError.message
+        });
+      }
+    }
+
+    // Log the action
+    db.prepare(`
+      INSERT INTO recruitment_workflow_log
+      (candidate_id, action, action_type, details, performed_by, is_automated)
+      VALUES (?, ?, ?, ?, ?, 0)
+    `).run(
+      candidate_ids[0],
+      `Sent ${candidates.length} candidates for head review to ${reviewer_emails.length} reviewer(s)`,
+      'status_change',
+      JSON.stringify({ reviewer_emails, candidate_ids, results }),
+      userId || 1
+    );
+
+    res.json({
+      success: true,
+      message: `Review request sent to ${results.filter(r => r.success).length} reviewer(s)`,
+      results
+    });
+
+  } catch (error: any) {
+    console.error('Error sending head review:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ error: 'Failed to send review request', details: error.message });
+  }
+});
+
+// Get head review page data (public - no auth)
+router.get('/head-review/:token', (req, res) => {
+  try {
+    const { token } = req.params;
+
+    // Find the review token
+    const reviewToken = db.prepare(`
+      SELECT hrt.*, v.title as vacancy_title, v.department, v.skills_required
+      FROM head_review_tokens hrt
+      JOIN vacancies v ON hrt.vacancy_id = v.id
+      WHERE hrt.token = ?
+    `).get(token) as any;
+
+    if (!reviewToken) {
+      return res.status(404).json({ error: 'Invalid or expired review link' });
+    }
+
+    // Check if expired
+    if (new Date(reviewToken.expires_at) < new Date()) {
+      return res.status(400).json({ error: 'This review link has expired' });
+    }
+
+    // Check if already responded
+    if (reviewToken.is_responded) {
+      return res.json({
+        already_submitted: true,
+        message: 'Thank you! Your review has already been submitted.'
+      });
+    }
+
+    // Get candidates
+    const candidateIds = JSON.parse(reviewToken.candidate_ids);
+    const candidates = db.prepare(`
+      SELECT id, first_name, last_name, email, phone, skills, experience_years,
+             current_salary, expected_salary, notice_period, current_company, city,
+             is_interested, interview_availability, status
+      FROM candidates
+      WHERE id IN (${candidateIds.join(',')}) AND isActive = 1
+    `).all();
+
+    res.json({
+      reviewInfo: {
+        vacancy_title: reviewToken.vacancy_title,
+        department: reviewToken.department,
+        skills_required: reviewToken.skills_required,
+        reviewer_email: reviewToken.reviewer_email,
+        reviewer_name: reviewToken.reviewer_name,
+        candidates
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Error fetching head review:', error);
+    res.status(500).json({ error: 'Failed to load review page' });
+  }
+});
+
+// Submit head review response (public - no auth)
+router.post('/head-review/:token', (req, res) => {
+  try {
+    const { token } = req.params;
+    const { selectedCandidates, remarks, sameTimeForAll, commonInterviewDate, commonInterviewTime } = req.body;
+
+    // Find the review token
+    const reviewToken = db.prepare(`
+      SELECT * FROM head_review_tokens WHERE token = ?
+    `).get(token) as any;
+
+    if (!reviewToken) {
+      return res.status(404).json({ error: 'Invalid or expired review link' });
+    }
+
+    // Check if expired
+    if (new Date(reviewToken.expires_at) < new Date()) {
+      return res.status(400).json({ error: 'This review link has expired' });
+    }
+
+    // Check if already responded
+    if (reviewToken.is_responded) {
+      return res.status(400).json({ error: 'You have already submitted your review' });
+    }
+
+    if (!selectedCandidates || selectedCandidates.length === 0) {
+      return res.status(400).json({ error: 'Please select at least one candidate' });
+    }
+
+    // Get a default interviewer for creating interviews
+    const defaultInterviewer = db.prepare(`
+      SELECT id FROM users WHERE isActive = 1 ORDER BY role = 'admin' DESC, id ASC LIMIT 1
+    `).get() as { id: number } | undefined;
+
+    // Update candidates and create interviews based on selections
+    for (const selection of selectedCandidates) {
+      const { candidateId, interviewDateTime } = selection;
+
+      // Parse interview date/time - use common time if sameTimeForAll, otherwise use individual time
+      let interviewDate = '';
+      let interviewTime = '';
+
+      if (sameTimeForAll && commonInterviewDate) {
+        interviewDate = commonInterviewDate;
+        interviewTime = commonInterviewTime || '10:00';
+      } else if (interviewDateTime) {
+        const parts = interviewDateTime.split('T');
+        interviewDate = parts[0] || '';
+        interviewTime = parts[1] || '10:00';
+      }
+
+      // Update candidate status to shortlisted (head-approved)
+      db.prepare(`
+        UPDATE candidates
+        SET status = 'interview_scheduled',
+            head_review_approved = 1,
+            head_review_date = datetime('now'),
+            head_review_remarks = ?,
+            updatedAt = datetime('now')
+        WHERE id = ?
+      `).run(remarks || '', candidateId);
+
+      // Create interview if date is provided (even without a default interviewer)
+      if (interviewDate) {
+        const interviewerId = defaultInterviewer?.id || 1; // Fallback to ID 1 if no interviewer
+
+        // Check if interview already exists
+        const existingInterview = db.prepare(`
+          SELECT id FROM interviews WHERE candidate_id = ? AND status != 'cancelled'
+        `).get(candidateId);
+
+        if (existingInterview) {
+          // Update existing interview
+          db.prepare(`
+            UPDATE interviews
+            SET scheduled_date = ?, scheduled_time = ?, notes = ?, updatedAt = datetime('now')
+            WHERE id = ?
+          `).run(interviewDate, interviewTime, `Updated by head reviewer: ${reviewToken.reviewer_email}`, (existingInterview as any).id);
+        } else {
+          // Create new interview
+          db.prepare(`
+            INSERT INTO interviews (
+              candidate_id, vacancy_id, interviewer_id, interview_type,
+              scheduled_date, scheduled_time, duration_minutes,
+              status, round_number, created_by, notes
+            ) VALUES (?, ?, ?, 'technical', ?, ?, 60, 'scheduled', 1, ?, ?)
+          `).run(
+            candidateId,
+            reviewToken.vacancy_id,
+            interviewerId,
+            interviewDate,
+            interviewTime,
+            interviewerId,
+            `Scheduled by head reviewer: ${reviewToken.reviewer_email}`
+          );
+        }
+      }
+
+      // Log the approval
+      db.prepare(`
+        INSERT INTO recruitment_workflow_log
+        (candidate_id, action, action_type, details, performed_by, is_automated)
+        VALUES (?, ?, ?, ?, NULL, 0)
+      `).run(
+        candidateId,
+        `Approved by head reviewer: ${reviewToken.reviewer_email}`,
+        'status_change',
+        JSON.stringify({
+          reviewer_email: reviewToken.reviewer_email,
+          interview_datetime: interviewDateTime,
+          remarks
+        })
+      );
+    }
+
+    // Mark candidates not selected as rejected/hold
+    const allCandidateIds = JSON.parse(reviewToken.candidate_ids);
+    const selectedIds = selectedCandidates.map((s: any) => s.candidateId);
+    const rejectedIds = allCandidateIds.filter((id: number) => !selectedIds.includes(id));
+
+    for (const rejectedId of rejectedIds) {
+      db.prepare(`
+        UPDATE candidates
+        SET head_review_approved = 0,
+            head_review_date = datetime('now'),
+            head_review_remarks = ?,
+            updatedAt = datetime('now')
+        WHERE id = ?
+      `).run(`Not selected by reviewer: ${reviewToken.reviewer_email}. ${remarks || ''}`, rejectedId);
+
+      db.prepare(`
+        INSERT INTO recruitment_workflow_log
+        (candidate_id, action, action_type, details, performed_by, is_automated)
+        VALUES (?, ?, ?, ?, NULL, 0)
+      `).run(
+        rejectedId,
+        `Not selected by head reviewer: ${reviewToken.reviewer_email}`,
+        'status_change',
+        JSON.stringify({ reviewer_email: reviewToken.reviewer_email, remarks })
+      );
+    }
+
+    // Mark token as responded
+    db.prepare(`
+      UPDATE head_review_tokens
+      SET is_responded = 1,
+          response_date = datetime('now'),
+          response_data = ?
+      WHERE id = ?
+    `).run(
+      JSON.stringify({ selectedCandidates, remarks, sameTimeForAll, commonInterviewDate, commonInterviewTime }),
+      reviewToken.id
+    );
+
+    res.json({
+      success: true,
+      message: `Thank you! You have selected ${selectedCandidates.length} candidate(s) for interview. The HR team has been notified.`
+    });
+
+  } catch (error: any) {
+    console.error('Error submitting head review:', error);
+    res.status(500).json({ error: 'Failed to submit review' });
+  }
+});
+
+// ========== SEND INTERVIEW INVITATION EMAIL ==========
+router.post('/interviews/:id/send-invite', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      gmail_connection_id,
+      additional_interviewers,  // Array of { name: string, email: string }
+      custom_message,
+      is_online,
+      location_or_link
+    } = req.body;
+    const userId = req.user!.userId;
+
+    if (!gmail_connection_id) {
+      return res.status(400).json({ error: 'gmail_connection_id is required' });
+    }
+
+    // Get the interview with candidate and vacancy details
+    const interview = db.prepare(`
+      SELECT i.*,
+             c.first_name, c.last_name, c.email as candidate_email, c.phone as candidate_phone,
+             v.title as vacancy_title, v.department
+      FROM interviews i
+      JOIN candidates c ON i.candidate_id = c.id
+      LEFT JOIN vacancies v ON i.vacancy_id = v.id
+      WHERE i.id = ? AND i.isActive = 1
+    `).get(id) as any;
+
+    if (!interview) {
+      return res.status(404).json({ error: 'Interview not found' });
+    }
+
+    // Get interviewer details
+    const interviewer = db.prepare(`
+      SELECT id, name, email FROM users WHERE id = ?
+    `).get(interview.interviewer_id) as any;
+
+    // Get Gmail connection
+    const gmailConnection = db.prepare(`
+      SELECT * FROM gmail_connections WHERE id = ? AND is_active = 1
+    `).get(gmail_connection_id) as any;
+
+    if (!gmailConnection) {
+      return res.status(400).json({ error: 'Gmail connection not found or inactive' });
+    }
+
+    // Format interview type for display
+    const interviewTypeLabels: Record<string, string> = {
+      hr: 'HR Round',
+      technical: 'Technical Round',
+      managerial: 'Managerial Round',
+      final: 'Final Round'
+    };
+    const roundName = interviewTypeLabels[interview.interview_type] || interview.interview_type;
+
+    // Format date
+    const interviewDate = new Date(interview.scheduled_date);
+    const formattedDate = interviewDate.toLocaleDateString('en-IN', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    // Format time
+    const formattedTime = interview.scheduled_time || 'TBD';
+
+    // Determine location/meeting info - use provided values or fall back to interview record
+    const useOnline = is_online !== undefined ? is_online : Boolean(interview.meeting_link);
+    const locationValue = location_or_link || (useOnline ? interview.meeting_link : interview.location) || '';
+
+    const locationInfo = useOnline
+      ? `<strong>Meeting Link:</strong> <a href="${locationValue}" target="_blank" style="display: inline-block; background: #2563eb; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; margin-top: 8px;">🔗 Join Meeting</a><br><span style="font-size: 12px; color: #6b7280; word-break: break-all;">${locationValue}</span>`
+      : `<strong>Venue:</strong> ${locationValue || 'Our Office'}`;
+
+    // Build interviewer list for display - ONLY from manually added interviewers
+    const additionalNames = (additional_interviewers || [])
+      .filter((i: any) => i.name && i.name.trim())
+      .map((i: any) => i.name.trim());
+    const interviewersList = additionalNames.length > 0 ? additionalNames.join(', ') : 'TBD';
+
+    // Build CC list - ONLY from manually added interviewers (not system interviewer)
+    const ccEmails: string[] = [];
+    if (additional_interviewers && additional_interviewers.length > 0) {
+      additional_interviewers.forEach((i: any) => {
+        if (i.email && i.email.trim()) {
+          ccEmails.push(`${i.name || ''} <${i.email.trim()}>`);
+        }
+      });
+    }
+
+    // Build email body
+    const emailBody = `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #2563eb, #7c3aed); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+    .content { background: #ffffff; padding: 30px; border: 1px solid #e5e7eb; }
+    .details-box { background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0; }
+    .detail-row { margin: 10px 0; }
+    .footer { background: #f9fafb; padding: 20px; text-align: center; border-radius: 0 0 8px 8px; border: 1px solid #e5e7eb; border-top: none; }
+    .highlight { color: #2563eb; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 style="margin: 0; font-size: 24px;">Interview Invitation</h1>
+      <p style="margin: 10px 0 0 0; opacity: 0.9;">${interview.vacancy_title || 'Position'}</p>
+    </div>
+    <div class="content">
+      <p>Dear <strong>${interview.first_name} ${interview.last_name || ''}</strong>,</p>
+
+      <p>We are pleased to invite you for an interview for the position of <span class="highlight">${interview.vacancy_title || 'the open position'}</span> at Phoneme Solutions.</p>
+
+      <div class="details-box">
+        <h3 style="margin-top: 0; color: #374151;">Interview Details</h3>
+        <div class="detail-row"><strong>Round:</strong> ${roundName} (Round ${interview.round_number})</div>
+        <div class="detail-row"><strong>Date:</strong> ${formattedDate}</div>
+        <div class="detail-row"><strong>Time:</strong> ${formattedTime}</div>
+        <div class="detail-row"><strong>Duration:</strong> ${interview.duration_minutes || 60} minutes</div>
+        <div class="detail-row">${locationInfo}</div>
+        <div class="detail-row"><strong>Interviewer(s):</strong> ${interviewersList}</div>
+      </div>
+
+      ${custom_message ? `<p><strong>Additional Information:</strong></p><p>${custom_message}</p>` : ''}
+
+      <p><strong>Please confirm your attendance</strong> by replying to this email at your earliest convenience.</p>
+
+      <p>If you have any questions or need to reschedule, please don't hesitate to contact us.</p>
+
+      <p>We look forward to meeting you!</p>
+
+      <p>Best regards,<br>
+      <strong>HR Team</strong><br>
+      Phoneme Solutions</p>
+    </div>
+    <div class="footer">
+      <p style="margin: 0; color: #6b7280; font-size: 12px;">
+        This is an automated email from Phoneme Solutions Recruitment System
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    // Send email via Gmail API
+    const gmail = await getGmailClient(gmail_connection_id);
+
+    // Build email headers with CC for interviewers
+    const emailLines = [
+      `To: ${interview.first_name} ${interview.last_name || ''} <${interview.candidate_email}>`,
+    ];
+
+    // Add CC if there are interviewers to notify
+    if (ccEmails.length > 0) {
+      emailLines.push(`Cc: ${ccEmails.join(', ')}`);
+    }
+
+    emailLines.push(
+      'Content-Type: text/html; charset=utf-8',
+      'MIME-Version: 1.0',
+      `Subject: Interview Invitation - ${roundName} for ${interview.vacancy_title || 'Position'} at Phoneme Solutions`,
+      '',
+      emailBody
+    );
+
+    const email = emailLines.join('\r\n');
+    const encodedEmail = Buffer.from(email).toString('base64')
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+    await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: { raw: encodedEmail }
+    });
+
+    // Update interview with location/meeting link if provided
+    if (location_or_link) {
+      if (useOnline) {
+        db.prepare(`UPDATE interviews SET meeting_link = ?, updatedAt = datetime('now') WHERE id = ?`).run(location_or_link, id);
+      } else {
+        db.prepare(`UPDATE interviews SET location = ?, updatedAt = datetime('now') WHERE id = ?`).run(location_or_link, id);
+      }
+    }
+
+    // Update interview status to confirmed if it was scheduled
+    if (interview.status === 'scheduled') {
+      db.prepare(`
+        UPDATE interviews
+        SET status = 'confirmed',
+            updatedAt = datetime('now')
+        WHERE id = ?
+      `).run(id);
+    }
+
+    // Log workflow action
+    const ccEmailAddresses = ccEmails.map(cc => cc.match(/<(.+)>/)?.[1] || cc);
+    db.prepare(`
+      INSERT INTO recruitment_workflow_log
+      (candidate_id, action, action_type, details, performed_by, is_automated)
+      VALUES (?, ?, ?, ?, ?, 0)
+    `).run(
+      interview.candidate_id,
+      `Interview invitation sent for ${roundName}`,
+      'status_change',
+      JSON.stringify({
+        interview_id: id,
+        round: roundName,
+        date: interview.scheduled_date,
+        time: interview.scheduled_time,
+        location: useOnline ? location_or_link : interview.location,
+        meeting_link: useOnline ? location_or_link : null,
+        interviewers: interviewersList,
+        sent_to: interview.candidate_email,
+        cc_sent_to: ccEmailAddresses,
+        sent_from: gmailConnection.email
+      }),
+      userId
+    );
+
+    res.json({
+      success: true,
+      message: 'Interview invitation sent successfully',
+      sent_to: interview.candidate_email,
+      sent_from: gmailConnection.email,
+      cc_sent_to: ccEmailAddresses,
+      interview_details: {
+        round: roundName,
+        date: formattedDate,
+        time: formattedTime,
+        location: useOnline ? 'Online' : locationValue
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Error sending interview invitation:', error);
+    const errorMessage = error.response?.data?.error?.message
+      || error.message
+      || 'Failed to send interview invitation';
+    res.status(500).json({ error: errorMessage, details: error.response?.data });
+  }
+});
+
+// Batch send interview invitations (Authenticated)
+router.post('/interviews/batch-send-invites', authenticateToken, async (req, res) => {
+  try {
+    const { interview_ids, gmail_connection_id, additional_interviewers, custom_message } = req.body;
+    const userId = req.user!.userId;
+
+    if (!gmail_connection_id) {
+      return res.status(400).json({ error: 'gmail_connection_id is required' });
+    }
+
+    if (!interview_ids || !Array.isArray(interview_ids) || interview_ids.length === 0) {
+      return res.status(400).json({ error: 'interview_ids array is required and must not be empty' });
+    }
+
+    // Get Gmail connection
+    const gmailConnection = db.prepare(`
+      SELECT * FROM gmail_connections WHERE id = ? AND is_active = 1
+    `).get(gmail_connection_id) as any;
+
+    if (!gmailConnection) {
+      return res.status(400).json({ error: 'Gmail connection not found or inactive' });
+    }
+
+    const gmail = await getGmailClient(gmail_connection_id);
+
+    const results: { success: any[], failed: any[] } = { success: [], failed: [] };
+
+    for (const interviewId of interview_ids) {
+      try {
+        // Get the interview with candidate and vacancy details
+        const interview = db.prepare(`
+          SELECT i.*,
+                 c.first_name, c.last_name, c.email as candidate_email,
+                 v.title as vacancy_title
+          FROM interviews i
+          JOIN candidates c ON i.candidate_id = c.id
+          LEFT JOIN vacancies v ON i.vacancy_id = v.id
+          WHERE i.id = ? AND i.isActive = 1
+        `).get(interviewId) as any;
+
+        if (!interview) {
+          results.failed.push({ id: interviewId, error: 'Interview not found' });
+          continue;
+        }
+
+        // Get interviewer details
+        const interviewer = db.prepare(`
+          SELECT name FROM users WHERE id = ?
+        `).get(interview.interviewer_id) as any;
+
+        // Format interview type
+        const interviewTypeLabels: Record<string, string> = {
+          hr: 'HR Round',
+          technical: 'Technical Round',
+          managerial: 'Managerial Round',
+          final: 'Final Round'
+        };
+        const roundName = interviewTypeLabels[interview.interview_type] || interview.interview_type;
+
+        // Format date
+        const interviewDate = new Date(interview.scheduled_date);
+        const formattedDate = interviewDate.toLocaleDateString('en-IN', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        });
+
+        // Determine if online or offline
+        const isOnline = interview.meeting_link && interview.meeting_link.trim() !== '';
+        const locationInfo = isOnline
+          ? `<strong>Meeting Link:</strong> <a href="${interview.meeting_link}">${interview.meeting_link}</a>`
+          : `<strong>Venue:</strong> ${interview.location || 'Our Office'}`;
+
+        // Build interviewer list
+        let interviewersList = interviewer ? interviewer.name : 'TBD';
+        if (additional_interviewers && additional_interviewers.length > 0) {
+          interviewersList += ', ' + additional_interviewers.join(', ');
+        }
+
+        // Build email body
+        const emailBody = `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #2563eb, #7c3aed); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+    .content { background: #ffffff; padding: 30px; border: 1px solid #e5e7eb; }
+    .details-box { background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0; }
+    .footer { background: #f9fafb; padding: 20px; text-align: center; border-radius: 0 0 8px 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 style="margin: 0; font-size: 24px;">Interview Invitation</h1>
+      <p style="margin: 10px 0 0 0; opacity: 0.9;">${interview.vacancy_title || 'Position'}</p>
+    </div>
+    <div class="content">
+      <p>Dear <strong>${interview.first_name} ${interview.last_name || ''}</strong>,</p>
+
+      <p>We are pleased to invite you for an interview for the position of <strong>${interview.vacancy_title || 'the open position'}</strong> at Phoneme Solutions.</p>
+
+      <div class="details-box">
+        <h3 style="margin-top: 0;">Interview Details</h3>
+        <p><strong>Round:</strong> ${roundName} (Round ${interview.round_number})</p>
+        <p><strong>Date:</strong> ${formattedDate}</p>
+        <p><strong>Time:</strong> ${interview.scheduled_time || 'TBD'}</p>
+        <p><strong>Duration:</strong> ${interview.duration_minutes || 60} minutes</p>
+        <p>${locationInfo}</p>
+        <p><strong>Interviewer(s):</strong> ${interviewersList}</p>
+      </div>
+
+      ${custom_message ? `<p><strong>Additional Information:</strong></p><p>${custom_message}</p>` : ''}
+
+      <p>Please confirm your attendance by replying to this email.</p>
+
+      <p>Best regards,<br><strong>HR Team</strong><br>Phoneme Solutions</p>
+    </div>
+    <div class="footer">
+      <p style="margin: 0; color: #6b7280; font-size: 12px;">Phoneme Solutions Recruitment System</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+        // Send email
+        const emailLines = [
+          `To: ${interview.first_name} ${interview.last_name || ''} <${interview.candidate_email}>`,
+          'Content-Type: text/html; charset=utf-8',
+          'MIME-Version: 1.0',
+          `Subject: Interview Invitation - ${roundName} for ${interview.vacancy_title || 'Position'}`,
+          '',
+          emailBody
+        ];
+
+        const email = emailLines.join('\r\n');
+        const encodedEmail = Buffer.from(email).toString('base64')
+          .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+        await gmail.users.messages.send({
+          userId: 'me',
+          requestBody: { raw: encodedEmail }
+        });
+
+        // Update interview status
+        if (interview.status === 'scheduled') {
+          db.prepare(`
+            UPDATE interviews SET status = 'confirmed', updatedAt = datetime('now') WHERE id = ?
+          `).run(interviewId);
+        }
+
+        // Log workflow action
+        db.prepare(`
+          INSERT INTO recruitment_workflow_log
+          (candidate_id, action, action_type, details, performed_by, is_automated)
+          VALUES (?, ?, ?, ?, ?, 0)
+        `).run(
+          interview.candidate_id,
+          `Interview invitation sent for ${roundName}`,
+          'status_change',
+          JSON.stringify({ interview_id: interviewId, sent_to: interview.candidate_email }),
+          userId
+        );
+
+        results.success.push({
+          id: interviewId,
+          candidate: `${interview.first_name} ${interview.last_name || ''}`,
+          email: interview.candidate_email
+        });
+
+      } catch (err: any) {
+        results.failed.push({
+          id: interviewId,
+          error: err.message || 'Failed to send'
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Sent ${results.success.length} invitation(s), ${results.failed.length} failed`,
+      results
+    });
+
+  } catch (error: any) {
+    console.error('Error batch sending interview invitations:', error);
+    res.status(500).json({ error: 'Failed to send interview invitations' });
   }
 });
 

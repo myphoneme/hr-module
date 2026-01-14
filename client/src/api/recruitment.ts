@@ -73,6 +73,17 @@ export interface Candidate {
   updatedAt: string;
   interviews?: Interview[];
   evaluations?: CandidateEvaluation[];
+  // Interest email workflow fields
+  is_interested?: 'yes' | 'no' | 'pending';
+  interview_availability?: 'tomorrow' | 'preferred_date';
+  preferred_interview_date?: string;
+  form_response_date?: string;
+  interest_email_sent_date?: string;
+  form_token?: string;
+  // Head review fields
+  head_review_approved?: number;
+  head_review_date?: string;
+  head_review_remarks?: string;
 }
 
 export interface Interview {
@@ -413,6 +424,69 @@ export const submitInterviewFeedback = async (id: number, feedback: {
   return api.post(`${API_BASE}/interviews/${id}/feedback`, feedback);
 };
 
+export const updateInterview = async (id: number, updates: {
+  scheduled_date?: string;
+  scheduled_time?: string;
+  interviewer_id?: number;
+  interview_type?: 'hr' | 'technical' | 'managerial' | 'final';
+  duration_minutes?: number;
+  location?: string;
+  meeting_link?: string;
+  status?: string;
+  notes?: string;
+}): Promise<Interview> => {
+  return api.patch<Interview>(`${API_BASE}/interviews/${id}`, updates);
+};
+
+export const deleteInterview = async (id: number): Promise<void> => {
+  return api.delete(`${API_BASE}/interviews/${id}`);
+};
+
+// Send Interview Invitation Email
+export interface SendInterviewInviteParams {
+  interview_id: number;
+  gmail_connection_id: number;
+  additional_interviewers?: { name: string; email: string }[];
+  custom_message?: string;
+  is_online?: boolean;
+  location_or_link?: string;
+}
+
+export interface SendInterviewInviteResult {
+  success: boolean;
+  message: string;
+  sent_to: string;
+  sent_from: string;
+  cc_sent_to?: string[];
+  interview_details: {
+    round: string;
+    date: string;
+    time: string;
+    location: string;
+  };
+}
+
+export const sendInterviewInvite = async (params: SendInterviewInviteParams): Promise<SendInterviewInviteResult> => {
+  const { interview_id, ...body } = params;
+  return api.post(`${API_BASE}/interviews/${interview_id}/send-invite`, body);
+};
+
+export const batchSendInterviewInvites = async (params: {
+  interview_ids: number[];
+  gmail_connection_id: number;
+  additional_interviewers?: string[];
+  custom_message?: string;
+}): Promise<{
+  success: boolean;
+  message: string;
+  results: {
+    success: { id: number; candidate: string; email: string }[];
+    failed: { id: number; error: string }[];
+  };
+}> => {
+  return api.post(`${API_BASE}/interviews/batch-send-invites`, params);
+};
+
 // Evaluation APIs
 export const getEvaluations = async (candidate_id?: number): Promise<CandidateEvaluation[]> => {
   const params = candidate_id ? `?candidate_id=${candidate_id}` : '';
@@ -599,4 +673,109 @@ export const getWorkflowStatus = async (candidateId: number): Promise<WorkflowSt
 // Get automation settings
 export const getAutomationSettings = async (): Promise<AutomationSettings> => {
   return api.get(`${API_BASE}/automation/settings`);
+};
+
+// =====================================================
+// INTEREST EMAIL WORKFLOW APIs
+// =====================================================
+
+export interface SendInterestEmailResponse {
+  success: boolean;
+  message: string;
+  form_token: string;
+  sent_at: string;
+  sent_to: string;
+  test_mode: boolean;
+  note: string;
+}
+
+export interface InterestDetailsUpdate {
+  is_interested?: 'yes' | 'no' | 'pending';
+  current_salary?: number;
+  expected_salary?: number;
+  notice_period?: string;
+  interview_availability?: 'tomorrow' | 'preferred_date';
+  preferred_interview_date?: string;
+}
+
+// Send interest email to candidate
+export const sendInterestEmail = async (
+  candidateId: number,
+  gmailConnectionId: number
+): Promise<SendInterestEmailResponse> => {
+  return api.post(`${API_BASE}/candidates/${candidateId}/send-interest-email`, {
+    gmail_connection_id: gmailConnectionId
+  });
+};
+
+// Update candidate interest details manually (by HR)
+export const updateInterestDetails = async (
+  candidateId: number,
+  details: InterestDetailsUpdate
+): Promise<Candidate> => {
+  return api.patch(`${API_BASE}/candidates/${candidateId}/interest-details`, details);
+};
+
+// Re-extract experience from resume (fixes incorrect experience calculation)
+export interface ReExtractExperienceResult {
+  success: boolean;
+  old_experience: number;
+  new_experience: number;
+  calculation: string;
+  candidate: Candidate;
+}
+
+export const reExtractExperience = async (candidateId: number): Promise<ReExtractExperienceResult> => {
+  return api.post(`${API_BASE}/candidates/${candidateId}/re-extract-experience`);
+};
+
+// Batch send interest emails to multiple candidates
+export interface BatchSendInterestEmailsResult {
+  success: boolean;
+  message: string;
+  sent_count: number;
+  skipped_count: number;
+  failed_count: number;
+  details: Array<{
+    candidate_id: number;
+    email: string;
+    status: 'sent' | 'skipped' | 'failed';
+    message?: string;
+  }>;
+}
+
+export const batchSendInterestEmails = async (
+  candidateIds: number[],
+  gmailConnectionId: number
+): Promise<BatchSendInterestEmailsResult> => {
+  return api.post(`${API_BASE}/candidates/batch-send-interest-emails`, {
+    candidate_ids: candidateIds,
+    gmail_connection_id: gmailConnectionId
+  });
+};
+
+// Head Person Review API
+export interface ReviewerEmail {
+  email: string;
+  name?: string;
+}
+
+export interface SendHeadReviewResult {
+  success: boolean;
+  message: string;
+  results: {
+    email: string;
+    success: boolean;
+    token?: string;
+    error?: string;
+  }[];
+}
+
+export const sendHeadReview = async (params: {
+  vacancy_id: number;
+  candidate_ids: number[];
+  reviewer_emails: ReviewerEmail[];
+  gmail_connection_id?: number;
+}): Promise<SendHeadReviewResult> => {
+  return api.post(`${API_BASE}/send-head-review`, params);
 };

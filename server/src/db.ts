@@ -652,6 +652,8 @@ db.exec(`
     referral_employee_id INTEGER,
     screening_score REAL,
     screening_notes TEXT,
+    skill_experience_data TEXT,
+    screening_date TEXT,
     status TEXT DEFAULT 'new' CHECK(status IN ('new', 'screening', 'shortlisted', 'interview_scheduled', 'interviewed', 'selected', 'offer_sent', 'offer_accepted', 'offer_rejected', 'joined', 'rejected', 'withdrawn', 'on_hold')),
     rejection_reason TEXT,
     offer_letter_id INTEGER,
@@ -1252,6 +1254,27 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_workflow_log_candidate ON recruitment_workflow_log(candidate_id);
   CREATE INDEX IF NOT EXISTS idx_workflow_log_action_type ON recruitment_workflow_log(action_type);
   CREATE INDEX IF NOT EXISTS idx_workflow_log_created ON recruitment_workflow_log(createdAt);
+
+  -- Head person review tokens table
+  CREATE TABLE IF NOT EXISTS head_review_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token TEXT UNIQUE NOT NULL,
+    vacancy_id INTEGER NOT NULL,
+    reviewer_email TEXT NOT NULL,
+    reviewer_name TEXT,
+    candidate_ids TEXT NOT NULL,
+    sent_by INTEGER NOT NULL,
+    is_responded INTEGER DEFAULT 0,
+    response_date TEXT,
+    response_data TEXT,
+    expires_at TEXT NOT NULL,
+    createdAt TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (vacancy_id) REFERENCES vacancies(id) ON DELETE CASCADE,
+    FOREIGN KEY (sent_by) REFERENCES users(id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_head_review_token ON head_review_tokens(token);
+  CREATE INDEX IF NOT EXISTS idx_head_review_vacancy ON head_review_tokens(vacancy_id);
 `);
 
 // Migration: Add new columns to users table if they don't exist
@@ -1399,6 +1422,22 @@ if (!candidateColumnNames.includes('auto_rejected_at')) {
 if (!candidateColumnNames.includes('auto_rejection_reason')) {
   db.exec('ALTER TABLE candidates ADD COLUMN auto_rejection_reason TEXT');
   console.log('Added auto_rejection_reason column to candidates table');
+}
+
+// Head person review columns
+if (!candidateColumnNames.includes('head_review_approved')) {
+  db.exec('ALTER TABLE candidates ADD COLUMN head_review_approved INTEGER');
+  console.log('Added head_review_approved column to candidates table');
+}
+
+if (!candidateColumnNames.includes('head_review_date')) {
+  db.exec('ALTER TABLE candidates ADD COLUMN head_review_date TEXT');
+  console.log('Added head_review_date column to candidates table');
+}
+
+if (!candidateColumnNames.includes('head_review_remarks')) {
+  db.exec('ALTER TABLE candidates ADD COLUMN head_review_remarks TEXT');
+  console.log('Added head_review_remarks column to candidates table');
 }
 
 // Migration: Add automation columns to interviews table
@@ -1561,6 +1600,39 @@ if (!candidateColumnNames.includes('notes')) {
   console.log('Added notes column to candidates table');
 }
 
+// Migration: Add interest email workflow columns to candidates table
+if (!candidateColumnNames.includes('is_interested')) {
+  db.exec("ALTER TABLE candidates ADD COLUMN is_interested TEXT CHECK(is_interested IN ('yes', 'no', 'pending'))");
+  console.log('Added is_interested column to candidates table');
+}
+
+if (!candidateColumnNames.includes('interview_availability')) {
+  db.exec("ALTER TABLE candidates ADD COLUMN interview_availability TEXT CHECK(interview_availability IN ('tomorrow', 'preferred_date'))");
+  console.log('Added interview_availability column to candidates table');
+}
+
+if (!candidateColumnNames.includes('preferred_interview_date')) {
+  db.exec('ALTER TABLE candidates ADD COLUMN preferred_interview_date TEXT');
+  console.log('Added preferred_interview_date column to candidates table');
+}
+
+if (!candidateColumnNames.includes('form_response_date')) {
+  db.exec('ALTER TABLE candidates ADD COLUMN form_response_date TEXT');
+  console.log('Added form_response_date column to candidates table');
+}
+
+if (!candidateColumnNames.includes('interest_email_sent_date')) {
+  db.exec('ALTER TABLE candidates ADD COLUMN interest_email_sent_date TEXT');
+  console.log('Added interest_email_sent_date column to candidates table');
+}
+
+if (!candidateColumnNames.includes('form_token')) {
+  db.exec('ALTER TABLE candidates ADD COLUMN form_token TEXT');
+  // Create unique index separately (SQLite doesn't support UNIQUE in ALTER TABLE)
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_candidates_form_token ON candidates(form_token) WHERE form_token IS NOT NULL');
+  console.log('Added form_token column to candidates table');
+}
+
 // Migration: Add columns to vacancies table for vacancy completion tracking
 if (!vacancyColumnNames.includes('openings')) {
   db.exec('ALTER TABLE vacancies ADD COLUMN openings INTEGER DEFAULT 1');
@@ -1690,6 +1762,15 @@ Best regards,
   );
 
   console.log('Default email templates created');
+}
+
+// Migration: Add all_sections_content column to rag_template_profiles for storing complete document sections
+const templateProfileColumns = db.prepare("PRAGMA table_info(rag_template_profiles)").all() as Array<{ name: string }>;
+const templateProfileColumnNames = templateProfileColumns.map(c => c.name);
+
+if (!templateProfileColumnNames.includes('all_sections_content')) {
+  db.exec('ALTER TABLE rag_template_profiles ADD COLUMN all_sections_content TEXT');
+  console.log('Added all_sections_content column to rag_template_profiles table');
 }
 
 export default db;
