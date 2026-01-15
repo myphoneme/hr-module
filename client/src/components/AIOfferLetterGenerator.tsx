@@ -1,12 +1,11 @@
 import { useState, useRef } from 'react';
-import { ragApi, type TemplateProfile, type RAGGenerateResponse } from '../api/rag';
+import { ragApi, type TemplateProfile } from '../api/rag';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 type Tab = 'training' | 'templates' | 'generate';
 
 export default function AIOfferLetterGenerator() {
   const [activeTab, setActiveTab] = useState<Tab>('training');
-  const queryClient = useQueryClient();
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -80,13 +79,13 @@ function StatsOverview() {
       </div>
       <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
         <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-          {stats?.learning?.patternsLearned || 0}
+          {(stats as any)?.learning?.patternsLearned || 0}
         </div>
         <div className="text-sm text-purple-700 dark:text-purple-300">Patterns Learned</div>
       </div>
       <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
         <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-          {stats?.learning?.salaryBenchmarks || 0}
+          {(stats as any)?.learning?.salaryBenchmarks || 0}
         </div>
         <div className="text-sm text-green-700 dark:text-green-300">Salary Benchmarks</div>
       </div>

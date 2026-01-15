@@ -1,7 +1,7 @@
 // Hook to use mock recruitment data
 // Set USE_MOCK_DATA to true to use mock data instead of API calls
 
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import {
   mockVacancies,
   mockCandidates,
@@ -10,7 +10,7 @@ import {
   departmentBreakdown,
   skillWiseCandidates,
 } from '../data/mockRecruitmentData';
-import type { Vacancy, Candidate, Interview, RecruitmentStats } from '../api/recruitment';
+import type { RecruitmentStats } from '../api/recruitment';
 
 // Toggle this to switch between mock and real data
 export const USE_MOCK_DATA = true;

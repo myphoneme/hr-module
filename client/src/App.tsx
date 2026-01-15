@@ -14,7 +14,7 @@ import { CategoryManager } from './components/CategoryManager';
 import OfferLetterManager from './components/OfferLetterManager';
 import RAGOfferLetterManager from './components/RAGOfferLetterManager';
 import CompanyLetterManager from './components/CompanyLetterManager';
-import { SignatoryManager } from './components/SignatoryManager';
+
 import PromptOfferLetterGenerator from './components/PromptOfferLetterGenerator';
 import LetterheadManager from './components/LetterheadManager';
 import { RecruitmentHub } from './components/RecruitmentHub';

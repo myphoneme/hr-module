@@ -747,11 +747,18 @@ export interface RAGGenerateRequest {
   hr_manager_title?: string;
   working_location?: string;
   offer_valid_days?: number;
+  designation?: string;
+  joining_date?: string;
 }
 
 export interface RAGGenerateResponse {
   success: boolean;
   offer_letter_data?: CreateOfferLetterInput;
+  template_profile?: { // Added template_profile
+    id: number;
+    name: string;
+    tone: 'formal' | 'semi_formal' | 'friendly' | null;
+  };
   confidence_scores?: {
     overall: number;
     name: number;

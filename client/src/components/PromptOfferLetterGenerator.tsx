@@ -64,7 +64,7 @@ interface PromptOfferLetterGeneratorProps {
 export default function PromptOfferLetterGenerator({ onBack }: PromptOfferLetterGeneratorProps) {
   // View mode: 'list' shows offer letters list, 'create' shows chat interface, 'training' shows reference docs
   const [viewMode, setViewMode] = useState<'list' | 'create' | 'training'>('list');
-  const [editingLetter, setEditingLetter] = useState<OfferLetterRecord | null>(null);
+
 
   // List view state
   const [offerLetters, setOfferLetters] = useState<OfferLetterRecord[]>([]);
@@ -76,8 +76,8 @@ export default function PromptOfferLetterGenerator({ onBack }: PromptOfferLetter
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [resumeData, setResumeData] = useState<any>(null);
+
+  const [_resumeData, _setResumeData] = useState<any>(null); // Renamed
   const [selectedLetterhead, setSelectedLetterhead] = useState<number | null>(null);
   const [selectedSignatory, setSelectedSignatory] = useState<number | null>(null);
   const [selectedSecondarySignatory, setSelectedSecondarySignatory] = useState<number | null>(null);
@@ -92,7 +92,7 @@ export default function PromptOfferLetterGenerator({ onBack }: PromptOfferLetter
     annual_ctc: number;
   }>>({});
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageIdCounter = useRef(0);
 
@@ -106,7 +106,7 @@ export default function PromptOfferLetterGenerator({ onBack }: PromptOfferLetter
     uploadDocument: uploadReferenceDocument,
     deleteDocument: deleteReferenceDocument,
     isUploadingDocument: isUploadingReferenceDoc,
-    stats: ragStats,
+    // stats: ragStats,
   } = useRAG();
 
   // Get HR and Director signatories
@@ -199,8 +199,7 @@ Once uploaded, come back here to generate new offer letters.`,
         type: 'text',
       },
     ]);
-    setResumeData(null);
-    setUploadedFile(null);
+    _setResumeData(null); // Changed setResumeData to _setResumeData
     setInputValue('');
     setCollectedDetails({});
   };
@@ -238,74 +237,7 @@ Once uploaded, come back here to generate new offer letters.`,
     );
   };
 
-  const handleFileUpload = async (file: File) => {
-    if (!file || file.type !== 'application/pdf') {
-      addMessage({
-        role: 'assistant',
-        content: 'Please upload a PDF resume file.',
-        type: 'text',
-      });
-      return;
-    }
 
-    setUploadedFile(file);
-    addMessage({
-      role: 'user',
-      content: `Uploaded: ${file.name}`,
-      type: 'file',
-      file: { name: file.name, type: file.type },
-    });
-
-    const loadingId = addMessage({
-      role: 'assistant',
-      content: 'Analyzing resume...',
-      type: 'loading',
-    });
-
-    setIsProcessing(true);
-
-    try {
-      const formData = new FormData();
-      formData.append('resume', file);
-
-      const response = await fetch(`${API_BASE_URL}/rag/upload-resume`, {
-        method: 'POST',
-        credentials: 'include',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Upload failed' }));
-        throw new Error(error.error || 'Failed to upload resume');
-      }
-
-      const data = await response.json();
-      setResumeData(data);
-
-      updateMessage(loadingId, {
-        content: `**Resume Analyzed!**
-
-**Candidate:** ${data.candidate_name || 'Not found'}
-**Email:** ${data.candidate_email || 'Not found'}
-**Phone:** ${data.candidate_phone || 'Not found'}
-**Experience:** ${data.experience_years || 0} years
-**Current Role:** ${data.designation || 'Not specified'}
-**Skills:** ${data.skills?.slice(0, 5).join(', ') || 'Not found'}
-
-Now tell me the offer details. For example:
-- "Create offer letter as Senior Developer, 8 LPA, joining 1st Feb, signatory Director"
-- "Generate offer for Python Developer role, salary 6 lakhs"`,
-        type: 'text',
-      });
-    } catch (error: any) {
-      updateMessage(loadingId, {
-        content: `Error analyzing resume: ${error.message}`,
-        type: 'text',
-      });
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
   // Parse prompt to extract candidate details
   const parsePromptDetails = (text: string): {
@@ -730,120 +662,7 @@ Click **"Download PDF"** to get the offer letter, or **"Save"** to store it in t
     }
   };
 
-  const handlePromptSubmitOld = async () => {
-    if (!inputValue.trim() || isProcessing) return;
 
-    const userPrompt = inputValue.trim();
-    setInputValue('');
-
-    addMessage({
-      role: 'user',
-      content: userPrompt,
-      type: 'text',
-    });
-
-    if (!resumeData) {
-      addMessage({
-        role: 'assistant',
-        content: 'Please upload a resume first, then tell me the offer details.',
-        type: 'text',
-      });
-      return;
-    }
-
-    const loadingId = addMessage({
-      role: 'assistant',
-      content: 'Generating offer letter...',
-      type: 'loading',
-    });
-
-    setIsProcessing(true);
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/rag/prompt-generate`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          resume_id: resumeData.id,
-          prompt: userPrompt,
-          signatory_id: selectedSignatory,
-          letterhead_id: selectedLetterhead,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Generation failed' }));
-        throw new Error(error.error || 'Failed to generate offer letter');
-      }
-
-      const result = await response.json();
-
-      if (!result.success) {
-        updateMessage(loadingId, {
-          content: `Error: ${result.error}`,
-          type: 'text',
-        });
-        return;
-      }
-
-      // Use letterhead from server response, or fetch if needed
-      let letterheadData = result.letter_content?.letterhead || null;
-
-      if (!letterheadData && selectedLetterhead) {
-        try {
-          letterheadData = await getLetterheadWithImages(selectedLetterhead);
-        } catch (e) {
-          console.error('Error fetching letterhead:', e);
-        }
-      }
-
-      if (!letterheadData) {
-        try {
-          const response = await fetch(`${API_BASE_URL}/letterheads/default/active`, {
-            credentials: 'include',
-          });
-          if (response.ok) {
-            letterheadData = await response.json();
-          }
-        } catch (e) {
-          console.error('Error fetching default letterhead:', e);
-        }
-      }
-
-      const letterContent = {
-        ...result.letter_content,
-        letterhead: letterheadData,
-      };
-
-      const signatoryDisplay = letterContent.signatory
-        ? `${letterContent.signatory.name} (${letterContent.signatory.position})`
-        : 'Not set';
-
-      updateMessage(loadingId, {
-        content: `**Offer Letter Generated!**
-
-**Candidate:** ${result.offer_letter_data.candidate_name}
-**Designation:** ${result.offer_letter_data.designation}
-**Annual CTC:** ₹${result.offer_letter_data.annual_ctc?.toLocaleString('en-IN')}
-**Joining Date:** ${result.offer_letter_data.joining_date}
-**Location:** ${result.offer_letter_data.working_location}
-**Signatory:** ${signatoryDisplay}
-
-Click "Download PDF" to get the offer letter, or "Save" to store it in the system.`,
-        type: 'offer-letter',
-        offerLetter: result.offer_letter_data,
-        letterContent: letterContent,
-      });
-    } catch (error: any) {
-      updateMessage(loadingId, {
-        content: `Error: ${error.message}`,
-        type: 'text',
-      });
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
   const handleDownloadPDF = async (letterContent: any) => {
     try {
@@ -1056,7 +875,7 @@ You can view it in the offer letters list.`,
   const startCreateMode = () => {
     setViewMode('create');
     initializeChat();
-    setEditingLetter(null);
+
   };
 
   // Handle reference document upload
@@ -1204,7 +1023,7 @@ You can view it in the offer letters list.`,
                       <div>
                         <p className="font-medium text-gray-900 dark:text-white">{doc.filename}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                          Uploaded {new Date(doc.created_at).toLocaleDateString('en-IN')}
+                          Uploaded {new Date(doc.createdAt).toLocaleDateString('en-IN')}
                         </p>
                       </div>
                     </div>

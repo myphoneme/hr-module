@@ -106,7 +106,7 @@ function ScreeningResultsTable({
   const shortlisted = validResults.filter(r => r.classification === 'shortlisted');
   const hold = validResults.filter(r => r.classification === 'hold');
   const rejected = validResults.filter(r => r.classification === 'rejected');
-  const errorResults = results.filter(r => r.error);
+
 
   // Selectable candidates are shortlisted and hold (not rejected)
   const selectableCandidates = validResults.filter(r => r.classification !== 'rejected');

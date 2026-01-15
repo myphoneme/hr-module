@@ -440,9 +440,9 @@ function CreateOfferLetterModal({
   });
   const [kraDetails, setKraDetails] = useState<string[]>([]);
   const [selectedHrSignatory, setSelectedHrSignatory] = useState<any>(null);
-  const [selectedDirectorSignatory, setSelectedDirectorSignatory] = useState<any>(null);
+  const [_selectedDirectorSignatory, _setSelectedDirectorSignatory] = useState<any>(null); // Renamed
   const [vacancyLocation, setVacancyLocation] = useState<string>('');
-  const [candidateVacancyId, setCandidateVacancyId] = useState<number | null>(null);
+  const [_candidateVacancyId, _setCandidateVacancyId] = useState<number | null>(null); // Renamed
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch candidate's vacancy details when modal opens (KRA will be added manually)
@@ -462,7 +462,7 @@ function CreateOfferLetterModal({
               setVacancyLocation(data.vacancy_location);
             }
             if (data.vacancy_id) {
-              setCandidateVacancyId(data.vacancy_id);
+              _setCandidateVacancyId(data.vacancy_id);
             }
           }
         } catch (error) {
@@ -715,7 +715,7 @@ function CreateOfferLetterModal({
 
       // Use selected signatories or defaults
       const hrSig = selectedHrSignatory || hrSignatory;
-      const dirSig = selectedDirectorSignatory || directorSignatory;
+      // const dirSig = _selectedDirectorSignatory || directorSignatory; // Removed declaration
 
       // Debug: Log KRA data being sent
       const kraData = kra && kra.length > 0 ? kra.map(k => ({ responsibility: k })) : undefined;
@@ -739,7 +739,7 @@ function CreateOfferLetterModal({
         template_type: 'long',
         salary_breakdown: salaryBreakdown,
         signatory_id: hrSig?.id,
-        secondary_signatory_id: null,
+        secondary_signatory_id: (_selectedDirectorSignatory || directorSignatory)?.id, // Used directly
         letterhead_id: defaultLetterhead?.id,
         kra_details: kraData,
       });
@@ -767,14 +767,6 @@ function CreateOfferLetterModal({
         role: 'assistant',
         content: `Error: ${err.message || 'Failed to generate offer letter'}. Please try again by typing "yes".`
       }]);
-    }
-  };
-
-  // Handle Enter key
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
     }
   };
 

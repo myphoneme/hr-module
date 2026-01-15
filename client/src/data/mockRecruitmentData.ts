@@ -1,7 +1,7 @@
 // Mock Recruitment Data for Testing
 // Categories: Software, Sales, Network, Engineering, Frontend, Backend, Analyst, Telecaller
 
-import { Vacancy, Candidate, Interview } from '../api/recruitment';
+import type { Vacancy, Candidate, Interview } from '../api/recruitment';
 
 // =====================================================
 // MOCK VACANCIES

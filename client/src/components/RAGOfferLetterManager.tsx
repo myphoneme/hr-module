@@ -29,19 +29,17 @@ export default function RAGOfferLetterManager({ onBack }: RAGOfferLetterManagerP
     isGenerating,
     generatedData,
     resetGeneration,
-    quickGenerate,
-    isQuickGenerating,
     quickGeneratedData,
     resetQuickGeneration,
     learnedPatterns,
     isLoadingLearnedPatterns,
     stats,
-    isLoadingStats,
-    refetchStats,
+
+
   } = useRAG();
 
   const { createOfferLetter, isCreating } = useOfferLetters();
-  const { signatories } = useSignatories();
+  const { data: signatories } = useSignatories();
 
   // Polling for processing documents
   useEffect(() => {
@@ -146,13 +144,10 @@ export default function RAGOfferLetterManager({ onBack }: RAGOfferLetterManagerP
       <div className="max-w-7xl mx-auto px-4 py-6">
         {activeTab === 'quick' && (
           <QuickGeneratePanel
-            onQuickGenerate={quickGenerate}
-            isGenerating={isQuickGenerating}
             generatedData={quickGeneratedData}
             onReset={resetQuickGeneration}
             onCreateOfferLetter={createOfferLetter}
             isCreating={isCreating}
-            trainingDocsCount={stats?.training.completed || 0}
           />
         )}
 
@@ -197,13 +192,10 @@ export default function RAGOfferLetterManager({ onBack }: RAGOfferLetterManagerP
 
 // Quick Generate Panel - Chat-style prompt to generate offer letter
 interface QuickGeneratePanelProps {
-  onQuickGenerate: (file: File) => Promise<QuickGenerateResponse>;
-  isGenerating: boolean;
   generatedData: QuickGenerateResponse | undefined;
   onReset: () => void;
   onCreateOfferLetter: (data: CreateOfferLetterInput) => Promise<any>;
   isCreating: boolean;
-  trainingDocsCount: number;
 }
 
 interface SalaryBreakdownItem {
@@ -218,16 +210,13 @@ interface ChatMessage {
 }
 
 function QuickGeneratePanel({
-  onQuickGenerate,
-  isGenerating,
   generatedData,
   onReset,
   onCreateOfferLetter,
   isCreating,
-  trainingDocsCount,
 }: QuickGeneratePanelProps) {
   const [prompt, setPrompt] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, _setError] = useState<string | null>(null); // Renamed setError to _setError
   const [isEditing, setIsEditing] = useState(false);
   const [editedData, setEditedData] = useState<CreateOfferLetterInput | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -366,6 +355,7 @@ Example: "Rahul Sharma, Software Developer, 6 LPA, joining 15th January 2025"`
         joining_date: parsed.joiningDate!,
         annual_ctc: parsed.salary!,
         offer_valid_till: offerValidDate.toISOString().split('T')[0],
+        letter_date: today.toISOString().split('T')[0],
         working_location: 'Noida',
         hr_manager_name: 'HR Manager',
         hr_manager_title: 'Manager-Human Resource',
@@ -749,8 +739,7 @@ You can review and edit the details below, then click "Create Offer Letter" to f
                         (value as number) >= 70 ? 'text-green-500' :
                         (value as number) >= 50 ? 'text-yellow-500' : 'text-red-500'
                       }`}>
-                        {value}%
-                      </div>
+                                                    {(value as number)}%                      </div>
                       <div className="text-xs text-gray-500 dark:text-gray-400 capitalize">{key}</div>
                     </div>
                   ))}
@@ -1658,7 +1647,7 @@ function GeneratePanel({
                       {Object.entries(generatedData.confidence_scores).map(([key, value]) => (
                         <div key={key}>
                           <div className={`font-bold ${(value as number) >= 70 ? 'text-green-600' : (value as number) >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
-                            {value}%
+                            {(value as number)}%
                           </div>
                           <div className="text-gray-500 capitalize">{key}</div>
                         </div>

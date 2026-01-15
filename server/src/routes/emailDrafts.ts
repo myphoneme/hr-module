@@ -456,7 +456,7 @@ router.post('/generate', async (req: Request, res: Response): Promise<void> => {
     }
 
     // Handle conditional blocks
-    body = body.replace(/{{#if\s+(\w+)}}([\s\S]*?){{\/if}}/g, (match, variable, content) => {
+    body = body.replace(/{{#if\s+(\w+)}}([\s\S]*?){{\/if}}/g, (match: string, variable: string, content: string) => {
       return templateVars[variable] ? content : '';
     });
 

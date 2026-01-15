@@ -13,10 +13,14 @@ import type {
   ResumeExtraction,
   ResumeExtractionWithUser,
   RAGGenerateRequest,
-  RAGGenerateResponse,
+  RAGGenerateResponse, // Added RAGGenerateResponse
   CreateOfferLetterInput,
   SalaryComponent,
 } from '../types';
+
+// Explicitly declare pdfParse type
+const pdfParse: (dataBuffer: Buffer) => Promise<any> = require('pdf-parse');
+
 
 const router = Router();
 
@@ -1009,8 +1013,8 @@ CRITICAL RULES:
       },
       confidence_scores: {
         overall: 90,
-        template_match: 95,
         name: resumeData.candidate_name ? 95 : 50,
+        address: resumeData.candidate_address ? 90 : 40, // Added address
         designation: resumeData.designation ? 90 : 70,
         salary: (expectedSalary > 0 || currentSalary > 0 || salaryBenchmark) ? 85 : 60,
       },
@@ -1606,7 +1610,7 @@ router.post('/reprocess-templates', authenticateToken, requireAdmin, async (req:
 
         if (templateStructure) {
           const profileId = await createOrUpdateTemplateProfile(templateStructure, doc.id, doc.uploaded_by || userId, allSectionsContent);
-          results.push({ id: doc.id, name: doc.original_name, success: true, profileId });
+          results.push({ id: doc.id, name: doc.original_name, success: true, profileId: profileId || undefined });
           console.log(`Template profile ${profileId} created for document ${doc.id}`);
         } else {
           results.push({ id: doc.id, name: doc.original_name, success: false, error: 'Failed to extract template structure' });
@@ -1876,7 +1880,7 @@ router.post('/generate-with-template', authenticateToken, async (req: Request, r
     }
 
     // Generate offer letter data using the specific template
-    const result = await generateOfferLetterWithTemplate(resume, templateProfile, config);
+    const result = await generateOfferLetterWithTemplate(resume, templateProfile, { ...config, resume_id: resume.id });
 
     res.json(result);
   } catch (error: any) {
@@ -3390,7 +3394,7 @@ router.post('/generate-with-template', authenticateToken, async (req: Request, r
     }
 
     // Generate offer letter using the template
-    const result = await generateOfferLetterWithTemplate(resume, templateProfile, config);
+    const result = await generateOfferLetterWithTemplate(resume, templateProfile, config as RAGGenerateRequest);
 
     res.json(result);
   } catch (error: any) {

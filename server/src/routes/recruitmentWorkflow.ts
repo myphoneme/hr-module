@@ -526,10 +526,10 @@ router.post('/naukri/search/:vacancyId', async (req: Request, res: Response): Pr
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.detail || 'Failed to scrape Naukri');
+        throw new Error((error as any).detail || 'Failed to scrape Naukri');
       }
 
-      const data = await response.json();
+      const data: any = await response.json();
 
       // Helper function to parse experience string properly
       const parseExperience = (expStr: string | undefined): number => {

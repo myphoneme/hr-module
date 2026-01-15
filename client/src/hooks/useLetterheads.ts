@@ -8,9 +8,6 @@ import {
   updateLetterhead,
   deleteLetterhead,
   setDefaultLetterhead,
-  type Letterhead,
-  type LetterheadWithImages,
-  type CreateLetterheadInput,
   type UpdateLetterheadInput,
 } from '../api/letterheads';
 

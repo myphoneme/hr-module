@@ -5,7 +5,6 @@ import {
   useSubmitInterviewFeedback,
   useUpdateCandidate,
   useDeleteInterview,
-  useUpdateInterview,
   type Interview,
   type Candidate,
 } from '../../hooks/useRecruitment';
@@ -23,7 +22,7 @@ export function InterviewManager() {
   const submitFeedbackMutation = useSubmitInterviewFeedback();
   const updateCandidateMutation = useUpdateCandidate();
   const deleteInterviewMutation = useDeleteInterview();
-  const updateInterviewMutation = useUpdateInterview();
+
 
   // Filter interviews (already filtered by API, but can add more client-side filtering)
   const filteredInterviews = interviews;
@@ -134,7 +133,7 @@ export function InterviewManager() {
         <InterviewDetailModal
           interview={selectedInterview}
           onClose={() => setSelectedInterview(null)}
-          onSubmitScore={(scores, notes, isEdit) => {
+          onSubmitScore={(scores: { technical: number; communication: number; problemSolving: number; culturalFit: number; overall: number }, notes: string) => {
             const avgScore = (scores.technical + scores.communication + scores.problemSolving + scores.culturalFit + scores.overall) / 5;
             const decision = avgScore >= 3 ? 'selected' : 'rejected';
 
@@ -337,7 +336,7 @@ function InterviewDetailModal({
 }: {
   interview: Interview;
   onClose: () => void;
-  onSubmitScore: (scores: { technical: number; communication: number; problemSolving: number; culturalFit: number; overall: number }, notes: string, isEdit: boolean) => void;
+  onSubmitScore: (scores: { technical: number; communication: number; problemSolving: number; culturalFit: number; overall: number }, notes: string) => void;
   onDelete: () => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -524,7 +523,7 @@ function InterviewDetailModal({
                   </button>
                 )}
                 <button
-                  onClick={() => onSubmitScore(scores, notes, isEditing)}
+                  onClick={() => onSubmitScore(scores, notes)}
                   className="flex-1 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
                 >
                   {isEditing ? 'Update Score' : 'Submit Score & Complete Interview'}
@@ -536,7 +535,7 @@ function InterviewDetailModal({
       </div>
     </div>
   );
-}
+} // Added missing closing brace for InterviewDetailModal
 
 // Score Item Component
 function ScoreItem({

@@ -5,8 +5,7 @@ import { useRAG } from '../hooks/useRAG';
 import { useSignatories } from '../hooks/useSignatories';
 import { OfferLetterPDF } from './OfferLetterPDF';
 import UploadOfferLetterExtractor from './UploadOfferLetterExtractor';
-import type { OfferLetterWithSignatory, CreateOfferLetterInput } from '../types';
-import type { QuickGenerateResponse } from '../api/rag';
+import type { OfferLetterWithSignatory, CreateOfferLetterInput, SalaryComponent, KRADetail } from '../types';
 
 interface OfferLetterManagerProps {
   onBack?: () => void;
@@ -14,11 +13,6 @@ interface OfferLetterManagerProps {
 
 type ViewMode = 'list' | 'generate' | 'edit' | 'preview' | 'upload-existing';
 
-interface SalaryBreakdownItem {
-  component: string;
-  perMonth: number;
-  annual: number;
-}
 
 export default function OfferLetterManager({ onBack }: OfferLetterManagerProps = {}) {
   const {
@@ -61,10 +55,10 @@ export default function OfferLetterManager({ onBack }: OfferLetterManagerProps =
   useEffect(() => {
     if (editingLetter) {
       // Parse salary_breakdown if it's a string (from DB)
-      let salaryBreakdown = editingLetter.salary_breakdown;
+      let salaryBreakdown: SalaryComponent[] = editingLetter.salary_breakdown as unknown as SalaryComponent[];
       if (typeof salaryBreakdown === 'string') {
         try {
-          salaryBreakdown = JSON.parse(salaryBreakdown);
+          salaryBreakdown = JSON.parse(salaryBreakdown) as SalaryComponent[];
         } catch {
           salaryBreakdown = [];
         }
@@ -73,10 +67,10 @@ export default function OfferLetterManager({ onBack }: OfferLetterManagerProps =
         salaryBreakdown = [];
       }
       
-      let kraDetails = editingLetter.kra_details;
+      let kraDetails: KRADetail[] = editingLetter.kra_details as unknown as KRADetail[];
       if (typeof kraDetails === 'string') {
         try {
-          kraDetails = JSON.parse(kraDetails);
+          kraDetails = JSON.parse(kraDetails) as KRADetail[];
         } catch {
           kraDetails = [];
         }
@@ -95,6 +89,7 @@ export default function OfferLetterManager({ onBack }: OfferLetterManagerProps =
         kra_details: kraDetails,
         joining_bonus: editingLetter.joining_bonus,
         offer_valid_till: editingLetter.offer_valid_till,
+        letter_date: editingLetter.letter_date, // Added letter_date
         hr_manager_name: editingLetter.hr_manager_name,
         hr_manager_title: editingLetter.hr_manager_title,
         working_location: editingLetter.working_location,

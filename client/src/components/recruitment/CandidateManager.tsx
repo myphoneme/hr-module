@@ -42,7 +42,7 @@ export function CandidateManager() {
   const sendInterviewInviteMutation = useSendInterviewInvite();
 
   // Use real API for candidates
-  const { data: candidates = [], isLoading, refetch } = useCandidates({
+  const { data: candidates = [], isLoading: _isLoading, refetch } = useCandidates({
     vacancy_id: vacancyFilter,
     status: statusFilter || undefined,
   });
@@ -117,7 +117,7 @@ export function CandidateManager() {
     try {
       const connections = await api.get<GmailConnection[]>('/gmail/connections');
       console.log('Gmail connections refreshed:', connections);
-      setGmailConnections(connections.filter(c => c.is_active === 1 || c.is_active === true));
+      setGmailConnections(connections.filter(c => !!c.is_active));
     } catch (error) {
       console.error('Error refreshing Gmail connections:', error);
     }
@@ -160,7 +160,7 @@ export function CandidateManager() {
     try {
       const connections = await api.get<GmailConnection[]>('/gmail/connections');
       console.log('Gmail connections fetched:', connections);
-      setGmailConnections(connections.filter(c => c.is_active === 1 || c.is_active === true));
+      setGmailConnections(connections.filter(c => !!c.is_active));
     } catch (error) {
       console.error('Error fetching Gmail connections:', error);
       setGmailConnections([]);
@@ -176,7 +176,7 @@ export function CandidateManager() {
     try {
       const connections = await api.get<GmailConnection[]>('/gmail/connections');
       console.log('Gmail connections fetched for interview invite:', connections);
-      setGmailConnections(connections.filter(c => c.is_active === 1 || c.is_active === true));
+      setGmailConnections(connections.filter(c => !!c.is_active));
     } catch (error) {
       console.error('Error fetching Gmail connections:', error);
       setGmailConnections([]);
@@ -295,7 +295,7 @@ export function CandidateManager() {
   // Check if interview time is pending (needs HR to set)
   const isInterviewTimePending = (interview: Interview | undefined): boolean => {
     if (!interview) return false;
-    return interview.scheduled_time === '00:00' || interview.notes?.includes('TIME_PENDING');
+    return !!(interview.scheduled_time === '00:00' || interview.notes?.includes('TIME_PENDING'));
   };
 
   // Format interview date/time display
@@ -367,7 +367,7 @@ export function CandidateManager() {
                 // Fetch Gmail connections first
                 try {
                   const connections = await api.get<GmailConnection[]>('/gmail/connections');
-                  setGmailConnections(connections.filter(c => c.is_active === 1 || c.is_active === true));
+                  setGmailConnections(connections.filter(c => !!c.is_active));
                 } catch (error) {
                   console.error('Error fetching Gmail connections:', error);
                 }
@@ -529,7 +529,7 @@ export function CandidateManager() {
             try {
               const connections = await api.get<GmailConnection[]>('/gmail/connections');
               console.log('Gmail connections refreshed:', connections);
-              setGmailConnections(connections.filter(c => c.is_active === 1 || c.is_active === true));
+              setGmailConnections(connections.filter(c => !!c.is_active));
             } catch (error) {
               console.error('Error refreshing Gmail connections:', error);
             }
@@ -540,9 +540,7 @@ export function CandidateManager() {
       {/* Send Head Review Modal */}
       {sendHeadReviewModal && (
         <SendHeadReviewModal
-          candidates={filteredCandidates.filter((c: Candidate) => selectedCandidatesForReview.has(c.id))}
           allCandidates={filteredCandidates.filter((c: Candidate) => c.form_response_date)}
-          vacancyId={vacancyFilter || filteredCandidates.find((c: Candidate) => c.form_response_date)?.vacancy_id || 0}
           vacancyTitle={selectedVacancy?.title || filteredCandidates.find((c: Candidate) => c.form_response_date)?.vacancy_title || ''}
           selectedCandidates={selectedCandidatesForReview}
           onToggleCandidate={(id) => {
@@ -579,8 +577,7 @@ export function CandidateManager() {
             }, {
               onSuccess: (result: any) => {
                 // Check if any emails failed and show review links
-                const failedEmails = result.results?.filter((r: any) => !r.success || r.error);
-                const successEmails = result.results?.filter((r: any) => r.success && !r.error);
+
 
                 let message = result.message;
 
@@ -1225,7 +1222,7 @@ function EditCandidateModal({
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Status</label>
             <select
               value={formData.status}
-              onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, status: e.target.value as Candidate['status'] })}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
               <option value="new">New</option>
@@ -1429,7 +1426,7 @@ function ScheduleInterviewModal({
               {candidate.first_name} {candidate.last_name}
             </h3>
             <p className="text-sm text-gray-500">{candidate.vacancy_title}</p>
-            <p className="text-sm text-gray-500">{candidate.experience_years} years exp. | {candidate.location}</p>
+            <p className="text-sm text-gray-500">{candidate.experience_years} years exp. | {candidate.city}</p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -1744,9 +1741,7 @@ function SendInterestEmailModal({
 
 // Send Head Review Modal
 function SendHeadReviewModal({
-  candidates,
   allCandidates,
-  vacancyId,
   vacancyTitle,
   selectedCandidates,
   onToggleCandidate,
@@ -1754,9 +1749,9 @@ function SendHeadReviewModal({
   onClose,
   onSend,
 }: {
-  candidates: Candidate[];
+
   allCandidates: Candidate[];
-  vacancyId: number;
+
   vacancyTitle: string;
   selectedCandidates: Set<number>;
   onToggleCandidate: (id: number) => void;
@@ -1773,7 +1768,7 @@ function SendHeadReviewModal({
     const fetchConnections = async () => {
       try {
         const connections = await api.get<GmailConnection[]>('/gmail/connections');
-        const activeConnections = connections.filter(c => c.is_active === 1 || c.is_active === true);
+        const activeConnections = connections.filter(c => !!c.is_active);
         setGmailConnections(activeConnections);
         if (activeConnections.length > 0) {
           setSelectedConnection(activeConnections[0].id);

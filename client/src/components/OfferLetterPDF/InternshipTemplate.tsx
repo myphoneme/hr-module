@@ -8,7 +8,6 @@ import {
   AnnexureA,
   ListItem,
   Section,
-  SecondarySignatureSection,
   type LetterheadData,
 } from './SharedComponents';
 

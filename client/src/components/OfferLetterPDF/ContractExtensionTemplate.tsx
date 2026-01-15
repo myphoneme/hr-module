@@ -6,7 +6,6 @@ import {
   RecipientSection,
   SignatureSection,
   AnnexureA,
-  SecondarySignatureSection,
   type LetterheadData,
 } from './SharedComponents';
 
