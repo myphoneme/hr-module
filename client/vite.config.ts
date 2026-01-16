@@ -10,26 +10,28 @@ function spaFallback(): Plugin {
       server.middlewares.use((req, _res, next) => {
         // Redirect OAuth callback routes to index.html
         if (req.url?.startsWith('/auth/')) {
-          req.url = '/index.html';
+          req.url = '/index.html'
         }
-        next();
-      });
+        next()
+      })
     },
-  };
+  }
 }
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: '/hr/',                 // 🔥 REQUIRED FOR NGINX SUB-PATH
   plugins: [spaFallback(), react(), tailwindcss()],
   define: {
-    'global': 'globalThis',
+    global: 'globalThis',
   },
   resolve: {
     alias: {
-      'buffer': 'buffer/',
+      buffer: 'buffer/',
     },
   },
   optimizeDeps: {
     include: ['buffer'],
   },
 })
+
