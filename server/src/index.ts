@@ -1,3 +1,4 @@
+
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -34,11 +35,11 @@ import automationWorkflowRouter from './routes/automationWorkflow';
 import recruitmentWorkflowRouter from './routes/recruitmentWorkflow';
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 9100;
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174'],
+  origin: ['http://localhost:5173', 'http://localhost:5174','http://10.100.60.111:8081','https://10.100.60.111:8081'],
   credentials: true,
 }));
 app.use(express.json());
