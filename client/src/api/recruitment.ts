@@ -322,6 +322,7 @@ export const screenResumes = async (
 
 // Candidate APIs
 export const getCandidates = async (filters?: { vacancy_id?: number; status?: string }): Promise<Candidate[]> => {
+  console.log('Fetching candidates with filters:', filters);
   const params = new URLSearchParams();
   if (filters?.vacancy_id) params.append('vacancy_id', filters.vacancy_id.toString());
   if (filters?.status) params.append('status', filters.status);
@@ -330,10 +331,12 @@ export const getCandidates = async (filters?: { vacancy_id?: number; status?: st
 };
 
 export const getCandidate = async (id: number): Promise<Candidate> => {
+  console.log('Fetching candidate with id:', id);
   return api.get<Candidate>(`${API_BASE}/candidates/${id}`);
 };
 
 export const createCandidate = async (formData: FormData): Promise<Candidate> => {
+  console.log('Creating new candidate');
   const response = await fetch(`http://localhost:3001/api${API_BASE}/candidates`, {
     method: 'POST',
     credentials: 'include',
@@ -347,10 +350,12 @@ export const createCandidate = async (formData: FormData): Promise<Candidate> =>
 };
 
 export const updateCandidate = async (id: number, candidate: Partial<Candidate>): Promise<Candidate> => {
+  console.log('Updating candidate with id:', id);
   return api.put<Candidate>(`${API_BASE}/candidates/${id}`, candidate);
 };
 
 export const deleteCandidate = async (id: number): Promise<void> => {
+  console.log('Deleting candidate with id:', id);
   await api.delete(`${API_BASE}/candidates/${id}`);
 };
 
@@ -362,6 +367,7 @@ export const screenCandidate = async (id: number): Promise<{
   recommendation: 'shortlist' | 'maybe' | 'reject';
   notes: string;
 }> => {
+  console.log('Screening candidate with id:', id);
   return api.post(`${API_BASE}/candidates/${id}/screen`);
 };
 
@@ -372,10 +378,12 @@ export const makeCandidateDecision = async (id: number, decision: {
   designation_offered?: string;
   joining_date?: string;
 }): Promise<{ message: string }> => {
+  console.log('Making decision for candidate with id:', id);
   return api.post(`${API_BASE}/candidates/${id}/decision`, decision);
 };
 
 export const generateCTC = async (id: number, annual_ctc: number): Promise<CTCBreakdown> => {
+  console.log('Generating CTC for candidate with id:', id);
   return api.post(`${API_BASE}/candidates/${id}/generate-ctc`, { annual_ctc });
 };
 
@@ -386,6 +394,7 @@ export const getInterviews = async (filters?: {
   status?: string;
   date?: string;
 }): Promise<Interview[]> => {
+  console.log('Fetching interviews with filters:', filters);
   const params = new URLSearchParams();
   if (filters?.candidate_id) params.append('candidate_id', filters.candidate_id.toString());
   if (filters?.interviewer_id) params.append('interviewer_id', filters.interviewer_id.toString());
@@ -407,12 +416,14 @@ export const scheduleInterview = async (interview: {
   location?: string;
   meeting_link?: string;
 }): Promise<Interview> => {
+  console.log('Scheduling interview');
   return api.post<Interview>(`${API_BASE}/interviews`, interview);
 };
 
 export const generateInterviewQuestions = async (id: number, question_count?: number): Promise<{
   questions: InterviewQuestion[];
 }> => {
+  console.log('Generating interview questions for interview with id:', id);
   return api.post(`${API_BASE}/interviews/${id}/generate-questions`, { question_count });
 };
 
@@ -421,6 +432,7 @@ export const submitInterviewFeedback = async (id: number, feedback: {
   notes?: string;
   ai_decision: 'selected' | 'rejected';
 }): Promise<{ message: string; decision: string; score: number }> => {
+  console.log('Submitting interview feedback for interview with id:', id);
   return api.post(`${API_BASE}/interviews/${id}/feedback`, feedback);
 };
 
@@ -435,10 +447,12 @@ export const updateInterview = async (id: number, updates: {
   status?: string;
   notes?: string;
 }): Promise<Interview> => {
+  console.log('Updating interview with id:', id);
   return api.patch<Interview>(`${API_BASE}/interviews/${id}`, updates);
 };
 
 export const deleteInterview = async (id: number): Promise<void> => {
+  console.log('Deleting interview with id:', id);
   return api.delete(`${API_BASE}/interviews/${id}`);
 };
 
@@ -467,6 +481,7 @@ export interface SendInterviewInviteResult {
 }
 
 export const sendInterviewInvite = async (params: SendInterviewInviteParams): Promise<SendInterviewInviteResult> => {
+  console.log('Sending interview invite for interview with id:', params.interview_id);
   const { interview_id, ...body } = params;
   return api.post(`${API_BASE}/interviews/${interview_id}/send-invite`, body);
 };
@@ -484,17 +499,20 @@ export const batchSendInterviewInvites = async (params: {
     failed: { id: number; error: string }[];
   };
 }> => {
+  console.log('Batch sending interview invites');
   return api.post(`${API_BASE}/interviews/batch-send-invites`, params);
 };
 
 // Evaluation APIs
 export const getEvaluations = async (candidate_id?: number): Promise<CandidateEvaluation[]> => {
+  console.log('Fetching evaluations for candidate with id:', candidate_id);
   const params = candidate_id ? `?candidate_id=${candidate_id}` : '';
   return api.get<CandidateEvaluation[]>(`${API_BASE}/evaluations${params}`);
 };
 
 // Stats API
 export const getRecruitmentStats = async (): Promise<RecruitmentStats> => {
+  console.log('Fetching recruitment stats');
   return api.get<RecruitmentStats>(`${API_BASE}/stats`);
 };
 

@@ -13,10 +13,12 @@ interface HeaderProps {
 export function Header({ onOpenAIChat, onOpenMessages }: HeaderProps) {
   const { user, logout } = useAuth();
   const { theme, setTheme, resolvedTheme } = useTheme();
-  const { data: notifications } = useNotifications();
-  const { data: unreadCount } = useUnreadCount();
-  const markAsRead = useMarkAsRead();
-  const markAllAsRead = useMarkAllAsRead();
+
+  // Conditionally fetch notifications only if user is logged in
+  const { data: notifications } = user ? useNotifications() : { data: [] };
+  const { data: unreadCount } = user ? useUnreadCount() : { data: 0 };
+  const markAsRead = user ? useMarkAsRead() : { mutate: () => {} }; // Placeholder
+  const markAllAsRead = user ? useMarkAllAsRead() : { mutate: () => {} }; // Placeholder
 
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -143,19 +145,20 @@ export function Header({ onOpenAIChat, onOpenMessages }: HeaderProps) {
           </div>
 
           {/* Notifications */}
-          <div ref={notifRef} className="relative">
-            <button
-              onClick={() => setShowNotifications(!showNotifications)}
-              className="p-2 text-gray-500 hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-gray-700 rounded-lg transition-colors relative"
-              title="Notifications"
-            >
-              <BellIcon className="w-5 h-5" />
-              {unreadCount && unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
-              )}
-            </button>
+          {user && ( // Conditionally render notifications if user is logged in
+            <div ref={notifRef} className="relative">
+              <button
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="p-2 text-gray-500 hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-gray-700 rounded-lg transition-colors relative"
+                title="Notifications"
+              >
+                <BellIcon className="w-5 h-5" />
+                {unreadCount && unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
 
             {showNotifications && (
               <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-50">
@@ -211,7 +214,7 @@ export function Header({ onOpenAIChat, onOpenMessages }: HeaderProps) {
               </div>
             )}
           </div>
-
+          )}
           {/* Divider */}
           <div className="w-px h-8 bg-gray-200 dark:bg-gray-700 mx-2" />
 

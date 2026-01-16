@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import {
   useRecruitmentStats,
@@ -5,7 +6,6 @@ import {
   useCandidates,
   useInterviews,
 } from '../hooks/useRecruitment';
-import { MockRecruitmentProvider, useMockRecruitment } from '../contexts/MockRecruitmentContext';
 import { VacancyManager } from './recruitment/VacancyManager';
 import { CandidateManager } from './recruitment/CandidateManager';
 import { InterviewManager } from './recruitment/InterviewManager';
@@ -15,6 +15,7 @@ import OfferLetterTab from './recruitment/OfferLetterTab';
 import { GmailConnectionManager } from './automation/GmailConnectionManager';
 import { SignatoryManager } from './SignatoryManager';
 
+
 type TabType = 'dashboard' | 'vacancies' | 'resume-screening' | 'candidates' | 'interviews' | 'offer-letters' | 'documents' | 'settings' | 'signatories';
 
 interface RecruitmentHubProps {
@@ -22,25 +23,18 @@ interface RecruitmentHubProps {
 }
 
 export function RecruitmentHub({ onBack }: RecruitmentHubProps) {
-  return (
-    <MockRecruitmentProvider>
-      <RecruitmentHubContent onBack={onBack} />
-    </MockRecruitmentProvider>
-  );
-}
-
-function RecruitmentHubContent({ onBack }: RecruitmentHubProps) {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
-  const { mockCandidates, mockInterviews } = useMockRecruitment();
 
   const { data: stats, isLoading: statsLoading } = useRecruitmentStats();
+  const { data: candidates } = useCandidates({ status: undefined });
+  const { data: interviews } = useInterviews({ status: 'scheduled' });
 
   const tabs = [
     { id: 'dashboard' as TabType, label: 'Dashboard', icon: '📊', count: null },
     { id: 'vacancies' as TabType, label: 'Vacancies', icon: '💼', count: null },
     { id: 'resume-screening' as TabType, label: 'Resume Screening', icon: '📄', count: null },
-    { id: 'candidates' as TabType, label: 'Candidates', icon: '👥', count: mockCandidates.length || null },
-    { id: 'interviews' as TabType, label: 'Interviews', icon: '🗓️', count: mockInterviews.length || null },
+    { id: 'candidates' as TabType, label: 'Candidates', icon: '👥', count: candidates?.length || null },
+    { id: 'interviews' as TabType, label: 'Interviews', icon: '🗓️', count: interviews?.length || null },
     { id: 'offer-letters' as TabType, label: 'Offer Letters', icon: '📝', count: null },
     { id: 'documents' as TabType, label: 'HR Docs', icon: '📁', count: null },
     { id: 'settings' as TabType, label: 'Settings', icon: '⚙️', count: null },
@@ -140,7 +134,7 @@ function DashboardView({ stats, isLoading }: { stats: any; isLoading: boolean })
   const { data: upcomingInterviews } = useInterviews({ status: 'scheduled' });
   const { data: openVacancies } = useVacancies({ status: 'open' });
 
-  if (isLoading) {
+  if (isLoading || !stats) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>

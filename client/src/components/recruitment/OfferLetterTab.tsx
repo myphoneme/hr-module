@@ -4,8 +4,9 @@ import { useSignatories } from '../../hooks/useSignatories';
 import { useLetterheads } from '../../hooks/useLetterheads';
 import { useOfferLetters } from '../../hooks/useOfferLetters';
 import { useRAG } from '../../hooks/useRAG';
-import { useMockRecruitment } from '../../contexts/MockRecruitmentContext';
+import { useMockRecruitment, MockCandidate } from '../../contexts/MockRecruitmentContext'; // Import useMockRecruitment and MockCandidate
 import type { Signatory, SalaryComponent, OfferLetterWithSignatory } from '../../types';
+import { Candidate } from '../../api/recruitment'; // Import Candidate type
 
 export default function OfferLetterTab() {
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -21,29 +22,6 @@ export default function OfferLetterTab() {
 
   // Fetch selected candidates (those who passed interview)
   const { data: selectedCandidates, isLoading: candidatesLoading } = useCandidates({ status: 'selected' });
-  const { mockCandidates } = useMockRecruitment();
-
-  // Get mock selected candidates
-  const mockSelectedCandidates = mockCandidates.filter(c => c.status === 'selected');
-
-  // Combine API and mock candidates
-  const allSelectedCandidates = [
-    ...(selectedCandidates || []),
-    ...mockSelectedCandidates.map(c => ({
-      id: c.id,
-      first_name: c.first_name,
-      last_name: c.last_name,
-      email: c.email,
-      phone: c.phone,
-      vacancy_title: c.vacancy_title,
-      experience_years: c.experience_years,
-      current_designation: c.current_designation,
-      expected_salary: c.expected_salary,
-      screening_score: c.screening_score,
-      city: c.location, // MockCandidate uses 'location'
-      isMock: true,
-    })),
-  ];
 
   const [error, setError] = useState<string | null>(null);
 
@@ -128,16 +106,16 @@ export default function OfferLetterTab() {
             </div>
             <div>
               <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-                Selected Candidates ({allSelectedCandidates?.length || 0})
+                Selected Candidates ({selectedCandidates?.length || 0})
               </h3>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 Candidates who passed interview - ready for offer letter
               </p>
             </div>
           </div>
-          {allSelectedCandidates?.length > 0 && (
+          {selectedCandidates && selectedCandidates.length > 0 && (
             <span className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full text-sm font-medium">
-              {allSelectedCandidates.length} pending offer{allSelectedCandidates.length > 1 ? 's' : ''}
+              {selectedCandidates.length} pending offer{selectedCandidates.length > 1 ? 's' : ''}
             </span>
           )}
         </div>
@@ -146,7 +124,7 @@ export default function OfferLetterTab() {
           <div className="flex justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
           </div>
-        ) : allSelectedCandidates && allSelectedCandidates.length > 0 ? (
+        ) : selectedCandidates && selectedCandidates.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead className="bg-gray-50 dark:bg-gray-900">
@@ -161,8 +139,8 @@ export default function OfferLetterTab() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {allSelectedCandidates.map((candidate: any) => (
-                  <tr key={`${candidate.isMock ? 'mock-' : ''}${candidate.id}`} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                {selectedCandidates.map((candidate: Candidate) => (
+                  <tr key={candidate.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                     <td className="px-4 py-3">
                       <div>
                         <p className="font-medium text-gray-900 dark:text-white">{candidate.first_name} {candidate.last_name}</p>
@@ -404,10 +382,10 @@ function CreateOfferLetterModal({
   const updateCandidateMutation = useUpdateCandidate();
 
   // Get selected candidates
-  const mockSelectedCandidates = mockCandidates.filter(c => c.status === 'selected');
+  const mockSelectedCandidates = mockCandidates.filter((c: MockCandidate) => c.status === 'selected');
   const allSelectedCandidates = [
     ...(apiCandidates || []),
-    ...mockSelectedCandidates.map(c => ({
+    ...mockSelectedCandidates.map((c: MockCandidate) => ({
       id: c.id,
       first_name: c.first_name,
       last_name: c.last_name,

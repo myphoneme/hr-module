@@ -10,13 +10,11 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const { isAdmin } = useAuth();
 
+
+
+
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: DashboardIcon },
-    { id: 'tasks', label: 'Tasks', icon: TasksIcon },
-  ];
-
-  const documentItems = [
-    { id: 'company-letters', label: 'Company Letters', icon: CompanyLetterIcon, tooltip: 'Manage Company Letters' },
   ];
 
   const hrItems = [
@@ -84,27 +82,9 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
           </button>
         ))}
 
-        {/* Documents & HR Section - Admin Only */}
+        {/* HR Section - Admin Only */}
         {isAdmin && (
           <>
-            <div className={`text-xs text-gray-500 uppercase mt-6 mb-2 ${collapsed ? 'hidden' : 'px-3'}`}>
-              Documents
-            </div>
-            {documentItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => onPageChange(item.id)}
-                className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg mb-1 transition-colors ${
-                  currentPage === item.id
-                    ? 'bg-orange-500 text-white'
-                    : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-                }`}
-              >
-                <item.icon className="w-5 h-5 flex-shrink-0" />
-                {!collapsed && <span>{item.label}</span>}
-              </button>
-            ))}
-
             <div className={`text-xs text-gray-500 uppercase mt-6 mb-2 ${collapsed ? 'hidden' : 'px-3'}`}>
               HR
             </div>
@@ -160,19 +140,6 @@ function DashboardIcon({ className }: { className?: string }) {
   );
 }
 
-function TasksIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-      />
-    </svg>
-  );
-}
-
 function SettingsIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -191,20 +158,6 @@ function SettingsIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
-function CompanyLetterIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-      />
-    </svg>
-  );
-}
-
 
 function RecruitmentIcon({ className }: { className?: string }) {
   return (

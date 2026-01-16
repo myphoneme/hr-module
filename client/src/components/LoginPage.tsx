@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { GoogleLogin } from '@react-oauth/google';
 import { useAuth } from '../contexts/AuthContext';
+import { useToasts } from '../contexts/ToasterProvider';
 
 export function LoginPage() {
   const { login, googleLogin } = useAuth();
+  const { toast } = useToasts();
   const [showEmailLogin, setShowEmailLogin] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -13,6 +15,7 @@ export function LoginPage() {
   const handleGoogleSuccess = async (response: { credential?: string }) => {
     if (!response.credential) {
       setError('Google login failed - no credential received');
+      toast('Google login failed - no credential received', 'error');
       return;
     }
 
@@ -21,8 +24,11 @@ export function LoginPage() {
 
     try {
       await googleLogin(response.credential);
+      toast('Logged in successfully!', 'success');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Google login failed');
+      const message = err instanceof Error ? err.message : 'Google login failed';
+      setError(message);
+      toast(message, 'error');
     } finally {
       setIsLoading(false);
     }
@@ -30,6 +36,7 @@ export function LoginPage() {
 
   const handleGoogleError = () => {
     setError('Google login failed. Please try again.');
+    toast('Google login failed. Please try again.', 'error');
   };
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
@@ -39,8 +46,11 @@ export function LoginPage() {
 
     try {
       await login(email, password);
+      toast('Logged in successfully!', 'success');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      const message = err instanceof Error ? err.message : 'Login failed';
+      setError(message);
+      toast(message, 'error');
     } finally {
       setIsLoading(false);
     }
@@ -241,6 +251,7 @@ export function LoginPage() {
     </div>
   );
 }
+
 
 function CheckIcon({ className }: { className?: string }) {
   return (

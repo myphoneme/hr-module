@@ -665,19 +665,19 @@ export default function ResumeScreening() {
     setDragActive(false);
 
     const files = Array.from(e.dataTransfer.files).filter(
-      file => file.type === 'application/pdf' ||
+      (file: File) => file.type === 'application/pdf' ||
               file.type === 'application/msword' ||
               file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     );
 
     if (files.length > 0) {
-      setUploadedFiles(prev => [...prev, ...files]);
+      setUploadedFiles((prev: File[]) => [...prev, ...files]);
     }
   }, []);
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    setUploadedFiles(prev => [...prev, ...files]);
+    setUploadedFiles((prev: File[]) => [...prev, ...files]);
     e.target.value = ''; // Reset input
   };
 

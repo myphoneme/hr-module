@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { LoginPage } from './components/LoginPage';
-import { TaskManager } from './components/TaskManager';
 import { AdminPanel } from './components/AdminPanel';
 import { CompanyBranchManager } from './components/CompanyBranchManager';
 import { BankAccountManager } from './components/BankAccountManager';
@@ -13,18 +12,18 @@ import { CategoryGroupManager } from './components/CategoryGroupManager';
 import { CategoryManager } from './components/CategoryManager';
 import OfferLetterManager from './components/OfferLetterManager';
 import RAGOfferLetterManager from './components/RAGOfferLetterManager';
-import CompanyLetterManager from './components/CompanyLetterManager';
-
 import PromptOfferLetterGenerator from './components/PromptOfferLetterGenerator';
 import LetterheadManager from './components/LetterheadManager';
 import { RecruitmentHub } from './components/RecruitmentHub';
 import { Sidebar, Header } from './components/layout';
 import { AIAssistant } from './components/AIAssistant';
 import { Messages } from './components/Messages';
+import { Toaster } from './components/Toaster';
+import { MockRecruitmentProvider } from './contexts/MockRecruitmentContext';
 
 function App() {
   const { user, isLoading, isAdmin } = useAuth();
-  const [currentPage, setCurrentPage] = useState('tasks');
+  const [currentPage, setCurrentPage] = useState('dashboard');
   const [showAIChat, setShowAIChat] = useState(false);
   const [showMessages, setShowMessages] = useState(false);
 
@@ -51,100 +50,42 @@ function App() {
     return <LoginPage />;
   }
 
-  // Render admin panel if selected
-  if (currentPage === 'admin' && isAdmin) {
-    return <AdminPanel onBack={() => setCurrentPage('tasks')} />;
-  }
-
-  // Render company-branch manager if selected (admin only)
-  if (currentPage === 'companies' && isAdmin) {
-    return <CompanyBranchManager onBack={() => setCurrentPage('tasks')} />;
-  }
-
-  // Render bank account manager if selected (admin only)
-  if (currentPage === 'bank-accounts' && isAdmin) {
-    return <BankAccountManager onBack={() => setCurrentPage('tasks')} />;
-  }
-
-  // Render project manager if selected (admin only)
-  if (currentPage === 'projects' && isAdmin) {
-    return <ProjectManager onBack={() => setCurrentPage('tasks')} />;
-  }
-
-  // Render vendor manager if selected (admin only)
-  if (currentPage === 'vendors' && isAdmin) {
-    return <VendorManager onBack={() => setCurrentPage('tasks')} />;
-  }
-
-  // Render employee manager if selected (admin only)
-  if (currentPage === 'employees' && isAdmin) {
-    return <EmployeeManager onBack={() => setCurrentPage('tasks')} />;
-  }
-
-  // Render transaction nature manager if selected (admin only)
-  if (currentPage === 'transaction-nature' && isAdmin) {
-    return <TransactionNatureManager onBack={() => setCurrentPage('tasks')} />;
-  }
-
-  // Render category group manager if selected (admin only)
-  if (currentPage === 'category-group' && isAdmin) {
-    return <CategoryGroupManager onBack={() => setCurrentPage('tasks')} />;
-  }
-
-  // Render category manager if selected (admin only)
-  if (currentPage === 'category' && isAdmin) {
-    return <CategoryManager onBack={() => setCurrentPage('tasks')} />;
-  }
-
-  // Render offer letter manager if selected (admin only)
-  if (currentPage === 'offer-letters' && isAdmin) {
-    return <OfferLetterManager onBack={() => setCurrentPage('tasks')} />;
-  }
-
-  // Render AI training (RAG) manager if selected (admin only)
-  if (currentPage === 'ai-training' && isAdmin) {
-    return <RAGOfferLetterManager onBack={() => setCurrentPage('tasks')} />;
-  }
-
-  // Render company letter manager if selected (admin only)
-  if (currentPage === 'company-letters' && isAdmin) {
-    return <CompanyLetterManager onBack={() => setCurrentPage('tasks')} />;
-  }
-
-  // Render AI offer generator if selected (admin only)
-  if (currentPage === 'ai-offer-generator' && isAdmin) {
-    return <PromptOfferLetterGenerator onBack={() => setCurrentPage('tasks')} />;
-  }
-
-  // Render letterhead manager if selected (admin only)
-  if (currentPage === 'letterheads' && isAdmin) {
-    return <LetterheadManager onBack={() => setCurrentPage('tasks')} />;
-  }
-
-  // Render recruitment hub if selected (admin only)
-  if (currentPage === 'recruitment-hub' && isAdmin) {
-    return <RecruitmentHub onBack={() => setCurrentPage('tasks')} />;
-  }
+  // Render admin pages first
+  if (currentPage === 'admin' && isAdmin) return <AdminPanel onBack={() => setCurrentPage('dashboard')} />;
+  if (currentPage === 'companies' && isAdmin) return <CompanyBranchManager onBack={() => setCurrentPage('dashboard')} />;
+  if (currentPage === 'bank-accounts' && isAdmin) return <BankAccountManager onBack={() => setCurrentPage('dashboard')} />;
+  if (currentPage === 'projects' && isAdmin) return <ProjectManager onBack={() => setCurrentPage('dashboard')} />;
+  if (currentPage === 'vendors' && isAdmin) return <VendorManager onBack={() => setCurrentPage('dashboard')} />;
+  if (currentPage === 'employees' && isAdmin) return <EmployeeManager onBack={() => setCurrentPage('dashboard')} />;
+  if (currentPage === 'transaction-nature' && isAdmin) return <TransactionNatureManager onBack={() => setCurrentPage('dashboard')} />;
+  if (currentPage === 'category-group' && isAdmin) return <CategoryGroupManager onBack={() => setCurrentPage('dashboard')} />;
+  if (currentPage === 'category' && isAdmin) return <CategoryManager onBack={() => setCurrentPage('dashboard')} />;
+  if (currentPage === 'offer-letters' && isAdmin) return <OfferLetterManager onBack={() => setCurrentPage('dashboard')} />;
+  if (currentPage === 'ai-training' && isAdmin) return <RAGOfferLetterManager onBack={() => setCurrentPage('dashboard')} />;
+  if (currentPage === 'ai-offer-generator' && isAdmin) return <PromptOfferLetterGenerator onBack={() => setCurrentPage('dashboard')} />;
+  if (currentPage === 'letterheads' && isAdmin) return <LetterheadManager onBack={() => setCurrentPage('dashboard')} />;
 
   // Main app with sidebar
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <Sidebar currentPage={currentPage} onPageChange={setCurrentPage} />
-      <div className="ml-64 transition-all duration-300">
-        <Header
-          onOpenAIChat={() => setShowAIChat(true)}
-          onOpenMessages={() => setShowMessages(true)}
-        />
-        <main>
-          {currentPage === 'dashboard' && <DashboardPage />}
-          {currentPage === 'tasks' && <TaskManager />}
-        </main>
-      </div>
+    <MockRecruitmentProvider>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <Toaster />
+        <Sidebar currentPage={currentPage} onPageChange={setCurrentPage} />
+        <div className="ml-64 transition-all duration-300">
+          <Header
+            onOpenAIChat={() => setShowAIChat(true)}
+            onOpenMessages={() => setShowMessages(true)}
+          />
+          <main>
+            {currentPage === 'dashboard' && <DashboardPage />}
+            {currentPage === 'recruitment-hub' && <RecruitmentHub />}
+          </main>
+        </div>
 
-      {/* Overlays */}
-      <AIAssistant isOpen={showAIChat} onClose={() => setShowAIChat(false)} />
-      <Messages isOpen={showMessages} onClose={() => setShowMessages(false)} />
-    </div>
+        <AIAssistant isOpen={showAIChat} onClose={() => setShowAIChat(false)} />
+        <Messages isOpen={showMessages} onClose={() => setShowMessages(false)} />
+      </div>
+    </MockRecruitmentProvider>
   );
 }
 
