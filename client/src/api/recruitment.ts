@@ -1,4 +1,5 @@
 import { api } from './client';
+import { API_BASE_URL } from '../config/api';
 
 const API_BASE = '/recruitment';
 
@@ -337,7 +338,7 @@ export const getCandidate = async (id: number): Promise<Candidate> => {
 
 export const createCandidate = async (formData: FormData): Promise<Candidate> => {
   console.log('Creating new candidate');
-  const response = await fetch(`http://localhost:3001/api${API_BASE}/candidates`, {
+  const response = await fetch(`${API_BASE_URL}${API_BASE}/candidates`, {
     method: 'POST',
     credentials: 'include',
     body: formData,

@@ -1,5 +1,6 @@
 import { google, Auth } from 'googleapis';
 import db from '../db';
+import { clientBaseUrl, serverBaseUrl } from '../config';
 
 // Google OAuth Configuration
 const SCOPES = {
@@ -23,7 +24,7 @@ const SCOPES = {
 export function getOAuth2Client(redirectUri?: string): Auth.OAuth2Client {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const defaultRedirectUri = redirectUri || process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3001/api/gmail/callback';
+  const defaultRedirectUri = redirectUri || process.env.GOOGLE_REDIRECT_URI || `${serverBaseUrl}/api/gmail/callback`;
 
   if (!clientId || !clientSecret) {
     throw new Error('Google OAuth credentials not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.');
@@ -34,7 +35,7 @@ export function getOAuth2Client(redirectUri?: string): Auth.OAuth2Client {
 
 // Generate OAuth URL for Gmail
 export function getGmailAuthUrl(): string {
-  const redirectUri = process.env.GOOGLE_GMAIL_REDIRECT_URI || 'http://localhost:5173/auth/gmail/callback';
+  const redirectUri = process.env.GOOGLE_GMAIL_REDIRECT_URI || `${clientBaseUrl}/auth/gmail/callback`;
   console.log('Gmail OAuth redirect URI:', redirectUri); // Debug log
   const oauth2Client = getOAuth2Client(redirectUri);
   return oauth2Client.generateAuthUrl({
@@ -46,7 +47,7 @@ export function getGmailAuthUrl(): string {
 
 // Generate OAuth URL for Calendar
 export function getCalendarAuthUrl(): string {
-  const redirectUri = process.env.GOOGLE_CALENDAR_REDIRECT_URI || 'http://localhost:5173/auth/google/callback';
+  const redirectUri = process.env.GOOGLE_CALENDAR_REDIRECT_URI || `${clientBaseUrl}/auth/google/callback`;
   console.log('Calendar OAuth redirect URI:', redirectUri); // Debug log
   const oauth2Client = getOAuth2Client(redirectUri);
 
@@ -65,8 +66,8 @@ export async function exchangeCodeForTokens(code: string, type: 'gmail' | 'calen
   email: string;
 }> {
   const redirectUri = type === 'calendar'
-    ? (process.env.GOOGLE_CALENDAR_REDIRECT_URI || 'http://localhost:5173/auth/google/callback')
-    : (process.env.GOOGLE_GMAIL_REDIRECT_URI || 'http://localhost:5173/auth/gmail/callback');
+    ? (process.env.GOOGLE_CALENDAR_REDIRECT_URI || `${clientBaseUrl}/auth/google/callback`)
+    : (process.env.GOOGLE_GMAIL_REDIRECT_URI || `${clientBaseUrl}/auth/gmail/callback`);
 
   console.log('Exchanging code for tokens with redirect URI:', redirectUri);
   console.log('Code (first 20 chars):', code.substring(0, 20) + '...');
@@ -142,8 +143,8 @@ export async function getAuthenticatedClient(connectionId: number, type: 'gmail'
 
   // Use the same redirect URI as when the token was obtained
   const redirectUri = type === 'calendar'
-    ? (process.env.GOOGLE_CALENDAR_REDIRECT_URI || 'http://localhost:5173/auth/google/callback')
-    : (process.env.GOOGLE_GMAIL_REDIRECT_URI || 'http://localhost:5173/auth/gmail/callback');
+    ? (process.env.GOOGLE_CALENDAR_REDIRECT_URI || `${clientBaseUrl}/auth/google/callback`)
+    : (process.env.GOOGLE_GMAIL_REDIRECT_URI || `${clientBaseUrl}/auth/gmail/callback`);
 
   const oauth2Client = getOAuth2Client(redirectUri);
   oauth2Client.setCredentials({

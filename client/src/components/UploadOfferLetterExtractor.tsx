@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSignatories } from '../hooks/useSignatories';
 import type { CreateOfferLetterInput, SalaryComponent, Signatory } from '../types';
+import { API_BASE_URL } from '../config/api';
 
 interface ExtractedOfferLetterData {
   candidate_name: string;
@@ -59,7 +60,7 @@ export default function UploadOfferLetterExtractor({ onExtracted, onCancel }: Up
       const formData = new FormData();
       formData.append('document', file);
 
-      const response = await fetch('http://localhost:3001/api/rag/extract-offer-letter', {
+      const response = await fetch(`${API_BASE_URL}/rag/extract-offer-letter`, {
         method: 'POST',
         credentials: 'include',
         body: formData,

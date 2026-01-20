@@ -7,6 +7,7 @@ import { useRAG } from '../../hooks/useRAG';
 import { useMockRecruitment, MockCandidate } from '../../contexts/MockRecruitmentContext'; // Import useMockRecruitment and MockCandidate
 import type { Signatory, SalaryComponent, OfferLetterWithSignatory } from '../../types';
 import { Candidate } from '../../api/recruitment'; // Import Candidate type
+import { API_BASE_URL, API_ORIGIN } from '../../config/api';
 
 export default function OfferLetterTab() {
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -36,7 +37,7 @@ export default function OfferLetterTab() {
 
   const handleDownload = async (letter: OfferLetterWithSignatory) => {
     try {
-      const response = await fetch(`http://localhost:3001/api/offer-letters/${letter.id}/pdf`, {
+      const response = await fetch(`${API_BASE_URL}/offer-letters/${letter.id}/pdf`, {
         credentials: 'include',
       });
 
@@ -431,7 +432,7 @@ function CreateOfferLetterModal({
       // Fetch vacancy details for non-mock candidates
       if (!(selectedCandidate as any).isMock) {
         try {
-          const response = await fetch(`http://localhost:3001/api/offer-letters/candidate-vacancy/${selectedCandidate.id}`, {
+          const response = await fetch(`${API_BASE_URL}/offer-letters/candidate-vacancy/${selectedCandidate.id}`, {
             credentials: 'include',
           });
           if (response.ok) {
@@ -1028,7 +1029,7 @@ function ViewOfferLetterModal({
   };
 
   // API base URL for images
-  const API_BASE = 'http://localhost:3001';
+  const API_BASE = API_ORIGIN;
 
   // Generate reference number
   const currentYear = new Date().getFullYear();
@@ -1440,7 +1441,7 @@ function SendEmailModal({
   useEffect(() => {
     const fetchConnections = async () => {
       try {
-        const response = await fetch('http://localhost:3001/api/gmail/connections', {
+        const response = await fetch(`${API_BASE_URL}/gmail/connections`, {
           credentials: 'include',
         });
         if (response.ok) {
@@ -1457,7 +1458,7 @@ function SendEmailModal({
 
     const fetchSavedSignature = async () => {
       try {
-        const response = await fetch('http://localhost:3001/api/offer-letters/email-signature', {
+        const response = await fetch(`${API_BASE_URL}/offer-letters/email-signature`, {
           credentials: 'include',
         });
         if (response.ok) {
@@ -1485,7 +1486,7 @@ function SendEmailModal({
     setError(null);
 
     try {
-      const response = await fetch(`http://localhost:3001/api/offer-letters/${letter.id}/send-email`, {
+      const response = await fetch(`${API_BASE_URL}/offer-letters/${letter.id}/send-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1513,7 +1514,7 @@ function SendEmailModal({
 
   const saveSignature = async () => {
     try {
-      await fetch('http://localhost:3001/api/offer-letters/email-signature', {
+      await fetch(`${API_BASE_URL}/offer-letters/email-signature`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

@@ -1,4 +1,4 @@
-const API_URL = 'http://localhost:3001/api';
+import { API_BASE_URL } from '../config/api';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -15,7 +15,7 @@ export interface ChatResponse {
 
 export const aiApi = {
   chat: async (message: string, conversationHistory: ChatMessage[]): Promise<ChatResponse> => {
-    const res = await fetch(`${API_URL}/ai/chat`, {
+    const res = await fetch(`${API_BASE_URL}/ai/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -9,6 +9,7 @@ import { getGmailClient } from '../utils/googleAuth.js';
 import OpenAI from 'openai';
 import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
+import { clientBaseUrl } from '../config';
 
 const router = Router();
 
@@ -3026,7 +3027,7 @@ router.post('/candidates/:id/send-interest-email', authenticateToken, async (req
     }
 
     // Build secure localhost link for candidate response page
-    const formUrl = `http://localhost:5173/candidate-response/${formToken}`;
+    const formUrl = `${clientBaseUrl}/candidate-response/${formToken}`;
 
     // Build email body
     const emailBody = buildInterestEmailBody(candidate, formUrl);
@@ -3185,7 +3186,7 @@ router.post('/candidates/batch-send-interest-emails', authenticateToken, async (
         const formToken = crypto.randomUUID();
 
         // Build secure localhost link for candidate response page
-        const formUrl = `http://localhost:5173/candidate-response/${formToken}`;
+        const formUrl = `${clientBaseUrl}/candidate-response/${formToken}`;
 
         // Build email body
         const emailBody = buildInterestEmailBody(candidate, formUrl);
@@ -3851,7 +3852,7 @@ router.post('/send-head-review', authenticateToken, async (req, res) => {
         );
 
         // Build review link
-        const reviewLink = `http://localhost:5173/head-review/${token}`;
+        const reviewLink = `${clientBaseUrl}/head-review/${token}`;
 
         // Build candidates summary for email
         let candidatesSummary = candidates.map((c, i) => `

@@ -1,10 +1,9 @@
 import type { Notification } from '../types';
-
-const API_URL = 'http://localhost:3001/api';
+import { API_BASE_URL } from '../config/api';
 
 export const notificationsApi = {
   getAll: async (): Promise<Notification[]> => {
-    const res = await fetch(`${API_URL}/notifications`, {
+    const res = await fetch(`${API_BASE_URL}/notifications`, {
       credentials: 'include',
     });
     if (!res.ok) throw new Error('Failed to fetch notifications');
@@ -12,7 +11,7 @@ export const notificationsApi = {
   },
 
   getUnreadCount: async (): Promise<number> => {
-    const res = await fetch(`${API_URL}/notifications/unread-count`, {
+    const res = await fetch(`${API_BASE_URL}/notifications/unread-count`, {
       credentials: 'include',
     });
     if (!res.ok) throw new Error('Failed to get unread count');
@@ -21,7 +20,7 @@ export const notificationsApi = {
   },
 
   markAsRead: async (id: number): Promise<void> => {
-    const res = await fetch(`${API_URL}/notifications/${id}/read`, {
+    const res = await fetch(`${API_BASE_URL}/notifications/${id}/read`, {
       method: 'PUT',
       credentials: 'include',
     });
@@ -29,7 +28,7 @@ export const notificationsApi = {
   },
 
   markAllAsRead: async (): Promise<void> => {
-    const res = await fetch(`${API_URL}/notifications/read-all`, {
+    const res = await fetch(`${API_BASE_URL}/notifications/read-all`, {
       method: 'PUT',
       credentials: 'include',
     });
@@ -37,7 +36,7 @@ export const notificationsApi = {
   },
 
   delete: async (id: number): Promise<void> => {
-    const res = await fetch(`${API_URL}/notifications/${id}`, {
+    const res = await fetch(`${API_BASE_URL}/notifications/${id}`, {
       method: 'DELETE',
       credentials: 'include',
     });

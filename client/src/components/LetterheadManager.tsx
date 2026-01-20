@@ -1,14 +1,13 @@
 import { useState, useRef } from 'react';
 import { useLetterheads } from '../hooks/useLetterheads';
 import type { Letterhead, CreateLetterheadInput } from '../api/letterheads';
+import { API_ORIGIN } from '../config/api';
 
 interface LetterheadManagerProps {
   onBack?: () => void;
 }
 
 type ViewMode = 'list' | 'create' | 'edit';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export default function LetterheadManager({ onBack }: LetterheadManagerProps) {
   const {
@@ -68,9 +67,9 @@ export default function LetterheadManager({ onBack }: LetterheadManagerProps) {
       is_default: letterhead.is_default,
     });
     setPreviewImages({
-      header: letterhead.header_image ? `${API_BASE}/uploads/letterheads/${letterhead.header_image}` : undefined,
-      footer: letterhead.footer_image ? `${API_BASE}/uploads/letterheads/${letterhead.footer_image}` : undefined,
-      logo: letterhead.logo_image ? `${API_BASE}/uploads/letterheads/${letterhead.logo_image}` : undefined,
+      header: letterhead.header_image ? `${API_ORIGIN}/uploads/letterheads/${letterhead.header_image}` : undefined,
+      footer: letterhead.footer_image ? `${API_ORIGIN}/uploads/letterheads/${letterhead.footer_image}` : undefined,
+      logo: letterhead.logo_image ? `${API_ORIGIN}/uploads/letterheads/${letterhead.logo_image}` : undefined,
     });
     setEditingLetterhead(letterhead);
     setViewMode('edit');
@@ -491,14 +490,14 @@ export default function LetterheadManager({ onBack }: LetterheadManagerProps) {
                 <div className="h-40 bg-gray-100 dark:bg-gray-700 relative">
                   {letterhead.header_image ? (
                     <img
-                      src={`${API_BASE}/uploads/letterheads/${letterhead.header_image}`}
+                      src={`${API_ORIGIN}/uploads/letterheads/${letterhead.header_image}`}
                       alt="Header"
                       className="w-full h-full object-contain"
                     />
                   ) : letterhead.logo_image ? (
                     <div className="flex items-center justify-center h-full">
                       <img
-                        src={`${API_BASE}/uploads/letterheads/${letterhead.logo_image}`}
+                        src={`${API_ORIGIN}/uploads/letterheads/${letterhead.logo_image}`}
                         alt="Logo"
                         className="max-h-24 max-w-full object-contain"
                       />

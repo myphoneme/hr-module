@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useRAG } from '../../hooks/useRAG';
+import { API_BASE_URL } from '../../config/api';
 
 export function HRDocumentsManager() {
   const {
@@ -239,7 +240,7 @@ export function HRDocumentsManager() {
                       </span>
                     )}
                     <button
-                      onClick={() => window.open(`http://localhost:3001/api/rag/documents/${doc.id}/download`, '_blank')}
+                      onClick={() => window.open(`${API_BASE_URL}/rag/documents/${doc.id}/download`, '_blank')}
                       className="text-blue-600 hover:text-blue-800 text-sm px-2 py-1 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
                     >
                       View

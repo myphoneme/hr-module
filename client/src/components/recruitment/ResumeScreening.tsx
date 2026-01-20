@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useVacancies, useCandidates, useBatchSendInterestEmails } from '../../hooks/useRecruitment';
 import { api } from '../../api/client';
+import { API_BASE_URL } from '../../config/api';
 
 // Gmail connection interface
 interface GmailConnection {
@@ -9,7 +10,6 @@ interface GmailConnection {
   name?: string;
 }
 
-const API_BASE_URL = 'http://localhost:3001/api';
 
 // Work history entry
 interface WorkHistoryEntry {

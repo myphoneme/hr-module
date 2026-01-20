@@ -1,7 +1,6 @@
 import { api } from './client';
 import type { Signatory, CreateSignatoryInput, UpdateSignatoryInput } from '../types';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+import { API_BASE_URL } from '../config/api';
 
 // Helper to convert input to FormData for file uploads
 const createFormData = (data: CreateSignatoryInput | UpdateSignatoryInput): FormData => {

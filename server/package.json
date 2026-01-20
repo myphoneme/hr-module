@@ -29,7 +29,11 @@
     "openai": "^6.9.1",
     "pdf-parse": "^2.4.5",
     "pdf.js-extract": "^0.2.1",
+    "pdfjs-dist": "^2.13.216",
     "pdfkit": "^0.17.2"
+  },
+  "overrides": {
+    "pdfjs-dist": "^2.13.216"
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",

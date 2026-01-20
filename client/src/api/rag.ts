@@ -6,7 +6,7 @@ import type {
   RAGStats
 } from '../types';
 
-const API_BASE_URL = 'http://localhost:3001/api';
+import { API_BASE_URL } from '../config/api';
 
 export const ragApi = {
   // Training document endpoints

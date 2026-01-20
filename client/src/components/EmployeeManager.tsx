@@ -3,6 +3,7 @@ import { useEmployees, useDeleteEmployee } from '../hooks/useEmployees';
 import { useCompanies } from '../hooks/useCompanies';
 import type { EmployeeWithBranch } from '../types';
 import { EmployeeForm } from './EmployeeForm';
+import { API_BASE_URL } from '../config/api';
 
 interface EmployeeManagerProps {
   onBack: () => void;
@@ -170,7 +171,7 @@ export function EmployeeManager({ onBack }: EmployeeManagerProps) {
                       <td className="px-3 py-3">
                         {employee.document_path ? (
                           <a
-                            href={`http://localhost:3001/api/employees/files/${employee.document_path}`}
+                            href={`${API_BASE_URL}/employees/files/${employee.document_path}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-600 hover:underline"
@@ -184,7 +185,7 @@ export function EmployeeManager({ onBack }: EmployeeManagerProps) {
                       <td className="px-3 py-3">
                         {employee.image_path ? (
                           <img
-                            src={`http://localhost:3001/api/employees/files/${employee.image_path}`}
+                            src={`${API_BASE_URL}/employees/files/${employee.image_path}`}
                             alt={employee.employee_name}
                             className="w-10 h-10 object-cover rounded"
                           />

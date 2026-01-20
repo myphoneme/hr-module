@@ -1,15 +1,14 @@
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-// Plugin to handle SPA routing for OAuth callbacks
-function spaFallback(): Plugin {
+function spaFallback(basePath: string): Plugin {
   return {
     name: 'spa-fallback',
     configureServer(server) {
       server.middlewares.use((req, _res, next) => {
-        // Redirect OAuth callback routes to index.html
-        if (req.url?.startsWith('/auth/')) {
+        const authPrefixes = basePath === '/' ? ['/auth/'] : ['/auth/', `${basePath}auth/`]
+        if (authPrefixes.some(prefix => req.url?.startsWith(prefix))) {
           req.url = '/index.html'
         }
         next()
@@ -18,20 +17,31 @@ function spaFallback(): Plugin {
   }
 }
 
-// https://vite.dev/config/
-export default defineConfig({
-  base: '/hr/',                 // 🔥 REQUIRED FOR NGINX SUB-PATH
-  plugins: [spaFallback(), react(), tailwindcss()],
-  define: {
-    global: 'globalThis',
-  },
-  resolve: {
-    alias: {
-      buffer: 'buffer/',
-    },
-  },
-  optimizeDeps: {
-    include: ['buffer'],
-  },
-})
+const normalizeBasePath = (value: string | undefined) => {
+  if (!value) return '/'
+  let basePath = value.trim()
+  if (!basePath.startsWith('/')) basePath = `/${basePath}`
+  if (!basePath.endsWith('/')) basePath = `${basePath}/`
+  return basePath
+}
 
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  const basePath = normalizeBasePath(env.VITE_BASE_PATH)
+
+  return {
+    base: basePath,
+    plugins: [spaFallback(basePath), react(), tailwindcss()],
+    define: {
+      global: 'globalThis',
+    },
+    resolve: {
+      alias: {
+        buffer: 'buffer/',
+      },
+    },
+    optimizeDeps: {
+      include: ['buffer'],
+    },
+  }
+})

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import { API_BASE_URL } from '../../config/api';
 
 interface CandidateForReview {
   id: number;
@@ -58,7 +59,7 @@ export function HeadPersonReviewPage() {
   const fetchReviewInfo = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:3001/api/recruitment/head-review/${token}`);
+      const response = await fetch(`${API_BASE_URL}/recruitment/head-review/${token}`);
       const data = await response.json();
 
       if (data.already_submitted) {
@@ -178,7 +179,7 @@ export function HeadPersonReviewPage() {
       setSubmitting(true);
       setError(null);
 
-      const response = await fetch(`http://localhost:3001/api/recruitment/head-review/${token}`, {
+      const response = await fetch(`${API_BASE_URL}/recruitment/head-review/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

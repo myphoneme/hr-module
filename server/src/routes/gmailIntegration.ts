@@ -7,6 +7,7 @@ import {
   getGmailClient,
   isGoogleOAuthConfigured
 } from '../utils/googleAuth';
+import { clientBaseUrl } from '../config';
 import type {
   GmailConnection,
   GmailConnectionWithUser,
@@ -114,6 +115,62 @@ router.post('/callback', async (req: Request, res: Response): Promise<void> => {
       || error.message
       || 'Failed to connect Gmail';
     res.status(500).json({ error: errorMessage, details: error.response?.data });
+  }
+});
+
+// Handle OAuth callback via GET (browser redirect)
+router.get('/callback', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const code = req.query.code as string | undefined;
+    const userId = req.user!.userId;
+
+    if (!code) {
+      res.status(400).send('Authorization code is required');
+      return;
+    }
+
+    const tokens = await exchangeCodeForTokens(code, 'gmail');
+
+    const existing = db.prepare(`
+      SELECT id FROM gmail_connections WHERE email = ? AND user_id = ?
+    `).get(tokens.email, userId) as { id: number } | undefined;
+
+    let connectionId: number;
+
+    if (existing) {
+      db.prepare(`
+        UPDATE gmail_connections
+        SET access_token = ?, refresh_token = ?, token_expiry = ?, is_active = 1, updatedAt = datetime('now')
+        WHERE id = ?
+      `).run(
+        tokens.access_token,
+        tokens.refresh_token,
+        new Date(tokens.expiry_date).toISOString(),
+        existing.id
+      );
+      connectionId = existing.id;
+    } else {
+      const result = db.prepare(`
+        INSERT INTO gmail_connections (user_id, email, access_token, refresh_token, token_expiry)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(
+        userId,
+        tokens.email,
+        tokens.access_token,
+        tokens.refresh_token,
+        new Date(tokens.expiry_date).toISOString()
+      );
+      connectionId = result.lastInsertRowid as number;
+    }
+
+    const connection = db.prepare('SELECT * FROM gmail_connections WHERE id = ?').get(connectionId);
+
+    const redirectBase = clientBaseUrl.endsWith('/') ? clientBaseUrl : `${clientBaseUrl}/`;
+    res.redirect(`${redirectBase}?gmail=connected`);
+  } catch (error: any) {
+    console.error('OAuth callback (GET) error:', error);
+    const redirectBase = clientBaseUrl.endsWith('/') ? clientBaseUrl : `${clientBaseUrl}/`;
+    res.redirect(`${redirectBase}?gmail=error`);
   }
 });
 

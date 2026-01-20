@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import { API_BASE_URL } from '../../config/api';
 
 interface CandidateInfo {
   first_name: string;
@@ -39,7 +40,7 @@ export function CandidateResponsePage() {
   const fetchCandidateInfo = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:3001/api/recruitment/candidate-response/${token}`);
+      const response = await fetch(`${API_BASE_URL}/recruitment/candidate-response/${token}`);
       const data = await response.json();
 
       if (data.already_submitted) {
@@ -76,7 +77,7 @@ export function CandidateResponsePage() {
       setSubmitting(true);
       setError(null);
 
-      const response = await fetch(`http://localhost:3001/api/recruitment/candidate-response/${token}`, {
+      const response = await fetch(`${API_BASE_URL}/recruitment/candidate-response/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)

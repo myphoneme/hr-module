@@ -6,8 +6,7 @@ import { useSignatories } from '../hooks/useSignatories';
 import { useRAG } from '../hooks/useRAG';
 import type { Signatory, RAGDocument } from '../types';
 import { getLetterheadWithImages } from '../api/letterheads';
-
-const API_BASE_URL = 'http://localhost:3001/api';
+import { API_BASE_URL } from '../config/api';
 
 // Mandatory fields that MUST be provided - HR must provide these
 const MANDATORY_FIELDS = [

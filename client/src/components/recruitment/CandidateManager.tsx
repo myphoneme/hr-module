@@ -4,6 +4,7 @@ import type { Candidate, Interview, ReviewerEmail } from '../../api/recruitment'
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../api/client';
 import { gmailApi } from '../../api/automation';
+import { CLIENT_BASE_URL } from '../../config/api';
 
 interface EditingCell {
   candidateId: number;
@@ -585,7 +586,7 @@ export function CandidateManager() {
                 if (result.results?.some((r: any) => r.token)) {
                   const links = result.results
                     .filter((r: any) => r.token)
-                    .map((r: any) => `\n${r.email}: http://localhost:5173/head-review/${r.token}`)
+                    .map((r: any) => `\n${r.email}: ${CLIENT_BASE_URL}/head-review/${r.token}`)
                     .join('');
                   message += '\n\nReview Links (share manually):' + links;
                 }

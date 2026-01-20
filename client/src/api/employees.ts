@@ -1,4 +1,5 @@
 import { api } from './client';
+import { API_BASE_URL } from '../config/api';
 import type { EmployeeWithBranch, CreateEmployeeInput, UpdateEmployeeInput } from '../types';
 
 // Helper to convert input to FormData for file uploads
@@ -25,7 +26,7 @@ export const employeesApi = {
 
   create: async (data: CreateEmployeeInput): Promise<EmployeeWithBranch> => {
     const formData = createFormData(data);
-    const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/employees`, {
+    const response = await fetch(`${API_BASE_URL}/employees`, {
       method: 'POST',
       credentials: 'include',
       body: formData,
@@ -41,7 +42,7 @@ export const employeesApi = {
 
   update: async (id: number, data: UpdateEmployeeInput): Promise<EmployeeWithBranch> => {
     const formData = createFormData(data);
-    const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/employees/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/employees/${id}`, {
       method: 'PUT',
       credentials: 'include',
       body: formData,
@@ -58,5 +59,5 @@ export const employeesApi = {
   delete: (id: number) => api.delete(`/employees/${id}`),
 
   getFileUrl: (filename: string) =>
-    `${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/employees/files/${filename}`,
+    `${API_BASE_URL}/employees/files/${filename}`,
 };

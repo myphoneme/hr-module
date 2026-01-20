@@ -33,13 +33,14 @@ import emailDraftsRouter from './routes/emailDrafts';
 import ctcDiscussionRouter from './routes/ctcDiscussion';
 import automationWorkflowRouter from './routes/automationWorkflow';
 import recruitmentWorkflowRouter from './routes/recruitmentWorkflow';
+import { corsOrigins, serverBaseUrl, serverPort } from './config';
 
 const app = express();
-const PORT = process.env.PORT || 9100;
+const PORT = serverPort;
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174','http://10.100.60.111:8081','https://10.100.60.111:8081'],
+  origin: corsOrigins,
   credentials: true,
 }));
 app.use(express.json());
@@ -85,5 +86,5 @@ app.get('/health', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Server running on ${serverBaseUrl}`);
 });
