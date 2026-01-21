@@ -43,13 +43,17 @@ export function GmailConnectionManager() {
   // Handle OAuth callback from popup
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'gmail-oauth-callback' && event.data?.code) {
-        connectGmail.mutate(event.data.code);
+      if (event.origin !== window.location.origin) {
+        return;
+      }
+      if (event.data?.type === 'gmail-oauth-success') {
+        // The backend has handled the token exchange, just refetch the data
+        window.location.reload();
       }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [connectGmail]);
+  }, []);
 
   if (statusLoading || connectionsLoading) {
     return (

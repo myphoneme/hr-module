@@ -4,10 +4,11 @@ import { useAuth } from '../../contexts/AuthContext';
 interface SidebarProps {
   currentPage: string;
   onPageChange: (page: string) => void;
+  collapsed: boolean;
+  onToggle: (collapsed: boolean) => void;
 }
 
-export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
+export function Sidebar({ currentPage, onPageChange, collapsed, onToggle }: SidebarProps) {
   const { isAdmin } = useAuth();
 
 
@@ -19,12 +20,11 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
 
   const hrItems = [
     { id: 'recruitment-hub', label: 'Recruitment Hub', icon: RecruitmentIcon, tooltip: 'AI-assisted recruitment workflow' },
-    { id: 'letterheads', label: 'Letterheads', icon: DocumentIcon },
   ];
 
   return (
     <aside
-      className={`bg-gray-900 text-white h-screen fixed left-0 top-0 transition-all duration-300 flex flex-col ${
+      className={`bg-gray-900 text-white h-screen fixed left-0 top-0 transition-all duration-300 flex flex-col z-30 ${
         collapsed ? 'w-16' : 'w-64'
       }`}
     >
@@ -50,7 +50,7 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
 
       {/* Toggle Button */}
       <button
-        onClick={() => setCollapsed(!collapsed)}
+        onClick={() => onToggle(!collapsed)}
         className="absolute -right-3 top-20 bg-gray-900 border border-gray-700 rounded-full p-1 hover:bg-gray-800 z-10"
       >
         <svg

@@ -14,9 +14,10 @@ import ResumeScreening from './recruitment/ResumeScreening';
 import OfferLetterTab from './recruitment/OfferLetterTab';
 import { GmailConnectionManager } from './automation/GmailConnectionManager';
 import { SignatoryManager } from './SignatoryManager';
+import LetterheadManager from './LetterheadManager';
 
 
-type TabType = 'dashboard' | 'vacancies' | 'resume-screening' | 'candidates' | 'interviews' | 'offer-letters' | 'documents' | 'settings' | 'signatories';
+type TabType = 'dashboard' | 'vacancies' | 'resume-screening' | 'candidates' | 'interviews' | 'offer-letters' | 'documents' | 'settings' | 'signatories' | 'letterheads';
 
 interface RecruitmentHubProps {
   onBack?: () => void;
@@ -24,6 +25,8 @@ interface RecruitmentHubProps {
 
 export function RecruitmentHub({ onBack }: RecruitmentHubProps) {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+
+  const [showRightScroll, setShowRightScroll] = useState(false);
 
   const { data: stats, isLoading: statsLoading } = useRecruitmentStats();
   const { data: candidates } = useCandidates({ status: undefined });
@@ -39,6 +42,7 @@ export function RecruitmentHub({ onBack }: RecruitmentHubProps) {
     { id: 'documents' as TabType, label: 'HR Docs', icon: '📁', count: null },
     { id: 'settings' as TabType, label: 'Settings', icon: '⚙️', count: null },
     { id: 'signatories' as TabType, label: 'Signatories', icon: '✍️', count: null },
+    { id: 'letterheads' as TabType, label: 'Letterheads', icon: '📜', count: null },
   ];
 
   return (
@@ -123,6 +127,7 @@ export function RecruitmentHub({ onBack }: RecruitmentHubProps) {
           </div>
         )}
         {activeTab === 'signatories' && <SignatoryManager />}
+        {activeTab === 'letterheads' && <LetterheadManager />}
       </div>
     </div>
   );

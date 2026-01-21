@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { LoginPage } from './components/LoginPage';
 import { AdminPanel } from './components/AdminPanel';
@@ -26,6 +26,19 @@ function App() {
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [showAIChat, setShowAIChat] = useState(false);
   const [showMessages, setShowMessages] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    // Handle Gmail OAuth callback
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('gmail') === 'connected') {
+      if (window.opener) {
+        // We are in a popup
+        window.opener.postMessage({ type: 'gmail-oauth-success' }, window.location.origin);
+        window.close();
+      }
+    }
+  }, []);
 
   if (isLoading) {
     return (
@@ -70,11 +83,17 @@ function App() {
     <MockRecruitmentProvider>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <Toaster />
-        <Sidebar currentPage={currentPage} onPageChange={setCurrentPage} />
-        <div className="ml-64 transition-all duration-300">
+        <Sidebar
+          currentPage={currentPage}
+          onPageChange={setCurrentPage}
+          collapsed={sidebarCollapsed}
+          onToggle={setSidebarCollapsed}
+        />
+        <div className={`${sidebarCollapsed ? 'ml-16' : 'ml-64'} transition-all duration-300`}>
           <Header
             onOpenAIChat={() => setShowAIChat(true)}
             onOpenMessages={() => setShowMessages(true)}
+            sidebarCollapsed={sidebarCollapsed}
           />
           <main>
             {currentPage === 'dashboard' && <DashboardPage />}

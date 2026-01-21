@@ -11,7 +11,7 @@ export function HRDocumentsManager() {
     deleteDocument,
   } = useRAG();
 
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [dragActive, setDragActive] = useState(false);
 
   const handleDrag = (e: React.DragEvent) => {
@@ -28,28 +28,38 @@ export function HRDocumentsManager() {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files) {
+      handleFiles(e.dataTransfer.files);
     }
   };
 
-  const handleFile = (file: File) => {
-    if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
-      setSelectedFile(file);
-    } else {
-      alert('Please upload PDF files only');
+  const handleFiles = (files: FileList) => {
+    const newFiles = Array.from(files);
+    const pdfFiles = newFiles.filter(
+      (file) => file.type === 'application/pdf' || file.name.endsWith('.pdf')
+    );
+
+    if (pdfFiles.length !== newFiles.length) {
+      alert('Some files were not PDFs and were ignored.');
     }
+    
+    setSelectedFiles((prevFiles) => [...prevFiles, ...pdfFiles]);
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setSelectedFiles((prevFiles) => prevFiles.filter((_, i) => i !== index));
   };
 
   const handleUpload = async () => {
-    if (!selectedFile) return;
+    if (selectedFiles.length === 0) return;
 
     try {
-      await uploadDocument(selectedFile);
-      setSelectedFile(null);
+      await Promise.all(selectedFiles.map((file) => uploadDocument(file)));
+      setSelectedFiles([]);
+      alert('All documents uploaded successfully!');
     } catch (error) {
       console.error('Upload error:', error);
-      alert('Failed to upload document');
+      alert('Failed to upload one or more documents');
     }
   };
 
@@ -120,35 +130,45 @@ export function HRDocumentsManager() {
         <input
           type="file"
           accept=".pdf"
-          onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+          multiple
+          onChange={(e) => e.target.files && handleFiles(e.target.files)}
           className="hidden"
           id="file-upload"
         />
 
-        {selectedFile ? (
+        {selectedFiles.length > 0 ? (
           <div className="space-y-4">
-            <div className="flex items-center justify-center gap-3">
-              <span className="text-3xl">📄</span>
-              <div className="text-left">
-                <p className="font-medium text-gray-900 dark:text-white">{selectedFile.name}</p>
-                <p className="text-sm text-gray-500">
-                  {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                </p>
-              </div>
+            <div className="max-h-40 overflow-y-auto space-y-2 pr-2">
+              {selectedFiles.map((file, index) => (
+                <div key={index} className="flex items-center justify-between bg-gray-100 dark:bg-gray-700 p-2 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">📄</span>
+                    <div className="text-left">
+                      <p className="font-medium text-gray-900 dark:text-white text-sm truncate w-48">{file.name}</p>
+                      <p className="text-xs text-gray-500">
+                        {(file.size / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                    </div>
+                  </div>
+                  <button onClick={() => handleRemoveFile(index)} className="text-red-500 hover:text-red-700 text-xs">
+                    Remove
+                  </button>
+                </div>
+              ))}
             </div>
             <div className="flex justify-center gap-3">
               <button
-                onClick={() => setSelectedFile(null)}
+                onClick={() => setSelectedFiles([])}
                 className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
               >
-                Cancel
+                Clear All
               </button>
               <button
                 onClick={handleUpload}
                 disabled={isUploadingDocument}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
-                {isUploadingDocument ? 'Uploading...' : 'Upload Document'}
+                {isUploadingDocument ? 'Uploading...' : `Upload ${selectedFiles.length} Document(s)`}
               </button>
             </div>
           </div>

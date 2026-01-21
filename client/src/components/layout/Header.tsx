@@ -8,9 +8,10 @@ import type { Notification } from '../../types';
 interface HeaderProps {
   onOpenAIChat?: () => void;
   onOpenMessages?: () => void;
+  sidebarCollapsed: boolean;
 }
 
-export function Header({ onOpenAIChat, onOpenMessages }: HeaderProps) {
+export function Header({ onOpenAIChat, onOpenMessages, sidebarCollapsed }: HeaderProps) {
   const { user, logout } = useAuth();
   const { theme, setTheme, resolvedTheme } = useTheme();
 
