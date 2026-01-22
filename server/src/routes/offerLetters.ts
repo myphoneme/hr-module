@@ -167,6 +167,96 @@ function replacePlaceholders(template: string | null, data: {
   return result;
 }
 
+function normalizeComponentLabel(label: string): string {
+  return label.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function buildAnnexureRows(
+  components: SalaryComponent[],
+  annualCtc?: number
+): Array<{ component: string; perMonth: number | string; annual: number | string }> {
+  const rawRows = components.filter(item => (item.component || '').trim().length > 0);
+  const normalized = rawRows.map(row => normalizeComponentLabel(row.component || ''));
+
+  const isSummaryRow = (label: string) => {
+    return label === 'total' ||
+      label.startsWith('total ') ||
+      label.includes('fixed salary') ||
+      label.includes('fixed pay') ||
+      label.includes('ctc') ||
+      label.includes('variable') ||
+      label.includes('quarterly') ||
+      label.includes('gross') ||
+      label.includes('payable');
+  };
+
+  const isVariableRow = (label: string) => label.includes('variable');
+
+  const baseRows = rawRows.filter((row, idx) => {
+    const label = normalized[idx];
+    return !isSummaryRow(label) && !isVariableRow(label);
+  });
+
+  const fixedMonthly = baseRows.reduce(
+    (sum, item) => sum + (typeof item.perMonth === 'number' ? item.perMonth : 0),
+    0
+  );
+  const fixedAnnual = baseRows.reduce(
+    (sum, item) => sum + (typeof item.annual === 'number' ? item.annual : 0),
+    0
+  );
+
+  const fixedRowIndex = normalized.findIndex(label => label.includes('fixed salary'));
+  const variableRowIndex = normalized.findIndex(label => label.includes('variable'));
+  const totalCtcIndex = normalized.findIndex(label => label.includes('total ctc'));
+
+  const fixedRow = fixedRowIndex >= 0
+    ? {
+        ...rawRows[fixedRowIndex],
+        perMonth: typeof rawRows[fixedRowIndex].perMonth === 'number' ? rawRows[fixedRowIndex].perMonth : fixedMonthly,
+        annual: typeof rawRows[fixedRowIndex].annual === 'number' ? rawRows[fixedRowIndex].annual : fixedAnnual,
+      }
+    : {
+        component: 'Fixed Salary (Total)',
+        perMonth: fixedMonthly,
+        annual: fixedAnnual,
+      };
+
+  let variableAnnual = 0;
+  if (variableRowIndex >= 0 && typeof rawRows[variableRowIndex].annual === 'number') {
+    variableAnnual = rawRows[variableRowIndex].annual as number;
+  } else if (annualCtc && annualCtc > fixedAnnual) {
+    variableAnnual = annualCtc - fixedAnnual;
+  }
+
+  const variableRow = variableRowIndex >= 0
+    ? {
+        ...rawRows[variableRowIndex],
+        perMonth: '-----------',
+        annual: typeof rawRows[variableRowIndex].annual === 'number' ? rawRows[variableRowIndex].annual : variableAnnual,
+      }
+    : {
+        component: 'Variable (Quarterly Payable)',
+        perMonth: '-----------',
+        annual: variableAnnual,
+      };
+
+  const totalAnnual = annualCtc || fixedAnnual + variableAnnual;
+  const totalRow = totalCtcIndex >= 0
+    ? {
+        ...rawRows[totalCtcIndex],
+        perMonth: '-----------',
+        annual: typeof rawRows[totalCtcIndex].annual === 'number' ? rawRows[totalCtcIndex].annual : totalAnnual,
+      }
+    : {
+        component: 'Total CTC (Fixed+Variable)',
+        perMonth: '-----------',
+        annual: totalAnnual,
+      };
+
+  return [...baseRows, fixedRow, variableRow, totalRow];
+}
+
 // RAG Helper: Get offer letter section content from uploaded documents
 async function getOfferLetterSectionContent(sectionType: string, candidateData: any): Promise<string> {
   try {
@@ -801,6 +891,7 @@ router.post('/:id/generate', authenticateToken, (req, res) => {
     }
 
     const salaryBreakdown: SalaryComponent[] = JSON.parse(offerLetter.salary_breakdown);
+    const annexureRows = buildAnnexureRows(salaryBreakdown, offerLetter.annual_ctc);
     const optionalSections: string[] = JSON.parse(offerLetter.optional_sections || '[]');
     const kraDetails = offerLetter.kra_details ? JSON.parse(offerLetter.kra_details) : [];
 
@@ -1086,6 +1177,7 @@ router.get('/:id/pdf', authenticateToken, async (req, res) => {
     console.log('=== End Debug ===');
 
     const salaryBreakdown: SalaryComponent[] = JSON.parse(offerLetter.salary_breakdown);
+    const annexureRows = buildAnnexureRows(salaryBreakdown, offerLetter.annual_ctc);
 
     // Format currency (Indian format)
     const formatCurrency = (amount: number) => {
@@ -1868,52 +1960,66 @@ router.get('/:id/pdf', authenticateToken, async (req, res) => {
       .text('Salary Break Up', 50, doc.y, { underline: true });
     doc.moveDown(1.5);
 
-    // Salary Table - Simple Phoneme format (no colored headers)
+    // Salary Table
     const tableLeft = 50;
-    const salaryColWidths = [150, 150, 150];
-    const rowHeight = 22;
+    const col1Width = 230;
+    const col2Width = 130;
+    const col3Width = 135;
+    const rowHeight = 20;
     const tableTop = doc.y;
 
-    // Table Header Row (simple border, bold text)
-    doc.rect(tableLeft, tableTop, salaryColWidths[0], rowHeight).stroke('#000000');
-    doc.rect(tableLeft + salaryColWidths[0], tableTop, salaryColWidths[1], rowHeight).stroke('#000000');
-    doc.rect(tableLeft + salaryColWidths[0] + salaryColWidths[1], tableTop, salaryColWidths[2], rowHeight).stroke('#000000');
-
-    doc.fillColor('black').font(boldFont).fontSize(10);
-    doc.text('Components', tableLeft + 5, tableTop + 6, { width: salaryColWidths[0] - 10 });
-    doc.text('Per Month (in Rs.)', tableLeft + salaryColWidths[0] + 5, tableTop + 6, { width: salaryColWidths[1] - 10, align: 'center' });
-    doc.text('Annual (in Rs.)', tableLeft + salaryColWidths[0] + salaryColWidths[1] + 5, tableTop + 6, { width: salaryColWidths[2] - 10, align: 'center' });
-
-    // Table Rows - Simple format
-    let tableYPos = tableTop + rowHeight;
-    doc.font(mainFont);
-
-    salaryBreakdown.forEach((item) => {
-      doc.rect(tableLeft, tableYPos, salaryColWidths[0], rowHeight).stroke('#000000');
-      doc.rect(tableLeft + salaryColWidths[0], tableYPos, salaryColWidths[1], rowHeight).stroke('#000000');
-      doc.rect(tableLeft + salaryColWidths[0] + salaryColWidths[1], tableYPos, salaryColWidths[2], rowHeight).stroke('#000000');
+    // Helper to draw a table row
+    const drawTableRow = (y: number, text1: string, text2: string, text3: string, isHeader: boolean = false, isTotal: boolean = false) => {
+      doc.rect(tableLeft, y, col1Width, rowHeight).stroke('#000000');
+      doc.rect(tableLeft + col1Width, y, col2Width, rowHeight).stroke('#000000');
+      doc.rect(tableLeft + col1Width + col2Width, y, col3Width, rowHeight).stroke('#000000');
 
       doc.fillColor('black');
-      doc.text(item.component, tableLeft + 5, tableYPos + 6, { width: salaryColWidths[0] - 10 });
-      doc.text(formatCurrency(item.perMonth), tableLeft + salaryColWidths[0] + 5, tableYPos + 6, { width: salaryColWidths[1] - 10, align: 'center' });
-      doc.text(formatCurrency(item.annual), tableLeft + salaryColWidths[0] + salaryColWidths[1] + 5, tableYPos + 6, { width: salaryColWidths[2] - 10, align: 'center' });
+      doc.font(isHeader || isTotal ? boldFont : mainFont).fontSize(10);
 
+      doc.text(text1, tableLeft + 5, y + 6, { width: col1Width - 10 });
+      doc.text(text2, tableLeft + col1Width + 5, y + 6, { width: col2Width - 10, align: 'center' });
+      doc.text(text3, tableLeft + col1Width + col2Width + 5, y + 6, { width: col3Width - 10, align: 'center' });
+    };
+
+    // Table Header
+    drawTableRow(tableTop, 'Components', 'Per Month (in Rs.)', 'Annual (in Rs.)', true);
+    let tableYPos = tableTop + rowHeight;
+
+    // Table Rows (Components)
+    annexureRows.forEach((item: (typeof annexureRows)[number]) => {
+      const label = normalizeComponentLabel(item.component);
+      const isSummary =
+        label.includes('fixed salary') ||
+        label.includes('variable') ||
+        label.includes('total ctc');
+
+      const perMonthText = typeof item.perMonth === 'number' ? formatCurrency(item.perMonth) : String(item.perMonth || '-----------');
+      const annualText = typeof item.annual === 'number' ? formatCurrency(item.annual) : String(item.annual || '-----------');
+
+      drawTableRow(tableYPos, item.component, perMonthText, annualText, isSummary, isSummary);
       tableYPos += rowHeight;
     });
 
-    // Total Row (Fixed Salary Total) - with orange background
-    const totalMonthly = salaryBreakdown.reduce((sum, item) => sum + item.perMonth, 0);
-    const totalAnnual = salaryBreakdown.reduce((sum, item) => sum + item.annual, 0);
+    doc.y = tableYPos + 20;
+    doc.x = 50;
+    doc.moveDown(1);
 
-    doc.rect(tableLeft, tableYPos, salaryColWidths[0], rowHeight).stroke('#000000');
-    doc.rect(tableLeft + salaryColWidths[0], tableYPos, salaryColWidths[1], rowHeight).stroke('#000000');
-    doc.rect(tableLeft + salaryColWidths[0] + salaryColWidths[1], tableYPos, salaryColWidths[2], rowHeight).stroke('#000000');
+    doc.fontSize(10).font(boldFont).fillColor('black');
+    doc.text('Conveyance charges will be 4Rs /km for the official meetings.');
+    doc.moveDown(0.5);
 
-    doc.fillColor('black').font(boldFont);
+    const fixedTotal = annexureRows.find(
+      (row: (typeof annexureRows)[number]) =>
+        normalizeComponentLabel(row.component).includes('fixed salary')
+    );
+    const fixedMonthlyText = fixedTotal && typeof fixedTotal.perMonth === 'number'
+      ? `₹${formatCurrency(fixedTotal.perMonth)}`
+      : '';
 
-    tableYPos += rowHeight + 20;
-    doc.y = tableYPos;
-    doc.moveDown(2);
+    doc.fontSize(10).font(mainFont).fillColor('black');
+    doc.text(`• Fixed Salary: ${fixedMonthlyText} per month`, { indent: 10 });
+    doc.text('• Monthly Variable Incentive: Based on performance as per Annexure-B', { indent: 10 });
 
 
 
@@ -2485,6 +2591,7 @@ async function generatePDFBuffer(offerId: number | string): Promise<Buffer> {
       // Parse KRA and salary
       const kraDetails = offerLetter.kra_details ? JSON.parse(offerLetter.kra_details) : [];
       const salaryBreakdown: SalaryComponent[] = JSON.parse(offerLetter.salary_breakdown || '[]');
+      const annexureRows = buildAnnexureRows(salaryBreakdown, offerLetter.annual_ctc);
 
       // Format functions
       const formatCurrency = (amount: number) => amount.toLocaleString('en-IN');
@@ -3046,43 +3153,42 @@ async function generatePDFBuffer(offerId: number | string): Promise<Buffer> {
       let tableYPos = tableTop + rowHeight;
       doc.font(mainFont);
 
-      salaryBreakdown.forEach((item) => {
+      annexureRows.forEach((item) => {
+        const label = normalizeComponentLabel(item.component);
+        const isSummary =
+          label.includes('fixed salary') ||
+          label.includes('variable') ||
+          label.includes('total ctc');
+
         doc.rect(tableLeft, tableYPos, salaryColWidths[0], rowHeight).stroke('#000000');
         doc.rect(tableLeft + salaryColWidths[0], tableYPos, salaryColWidths[1], rowHeight).stroke('#000000');
         doc.rect(tableLeft + salaryColWidths[0] + salaryColWidths[1], tableYPos, salaryColWidths[2], rowHeight).stroke('#000000');
-        doc.fillColor('black');
+        doc.fillColor('black').font(isSummary ? boldFont : mainFont);
+        const perMonthText = typeof item.perMonth === 'number' ? formatCurrency(item.perMonth) : String(item.perMonth || '');
+        const annualText = typeof item.annual === 'number' ? formatCurrency(item.annual) : String(item.annual || '');
         doc.text(item.component, tableLeft + 5, tableYPos + 6, { width: salaryColWidths[0] - 10 });
-        doc.text(formatCurrency(item.perMonth), tableLeft + salaryColWidths[0] + 5, tableYPos + 6, { width: salaryColWidths[1] - 10, align: 'center' });
-        doc.text(formatCurrency(item.annual), tableLeft + salaryColWidths[0] + salaryColWidths[1] + 5, tableYPos + 6, { width: salaryColWidths[2] - 10, align: 'center' });
+        doc.text(perMonthText, tableLeft + salaryColWidths[0] + 5, tableYPos + 6, { width: salaryColWidths[1] - 10, align: 'center' });
+        doc.text(annualText, tableLeft + salaryColWidths[0] + salaryColWidths[1] + 5, tableYPos + 6, { width: salaryColWidths[2] - 10, align: 'center' });
         tableYPos += rowHeight;
       });
 
-      // Total row
-      const totalMonthly = salaryBreakdown.reduce((sum, item) => sum + item.perMonth, 0);
-      const totalAnnual = salaryBreakdown.reduce((sum, item) => sum + item.annual, 0);
-      doc.rect(tableLeft, tableYPos, salaryColWidths[0], rowHeight).stroke('#000000');
-      doc.rect(tableLeft + salaryColWidths[0], tableYPos, salaryColWidths[1], rowHeight).stroke('#000000');
-      doc.rect(tableLeft + salaryColWidths[0] + salaryColWidths[1], tableYPos, salaryColWidths[2], rowHeight).stroke('#000000');
-          doc.fillColor('black').font(boldFont);
-          doc.text('Fixed Salary (Total)', tableLeft + 5, tableYPos + 6, { width: salaryColWidths[0] - 10 });
-          doc.text(formatCurrency(totalMonthly), tableLeft + salaryColWidths[0] + 5, tableYPos + 6, { width: salaryColWidths[1] - 10, align: 'center' });
-          doc.text(formatCurrency(totalAnnual), tableLeft + salaryColWidths[0] + salaryColWidths[1] + 5, tableYPos + 6, { width: salaryColWidths[2] - 10, align: 'center' });
-      tableYPos += rowHeight + 20;
+      tableYPos += 20;
       doc.y = tableYPos;
-      doc.moveDown(2);
+      doc.x = 50;
+      doc.moveDown(1);
 
-      // Signature area
-      const annexureSigY = doc.y + 30;
-      doc.font(mainFont).fillColor('black').text('Employee Signature:', 50, annexureSigY);
-      doc.text('_____________________', 50, annexureSigY + 30);
-      doc.text('For, ' + companyName, 320, annexureSigY);
-      if (offerLetter.signatory_signature) {
-        const sigPath = path.join(process.cwd(), 'uploads', 'signatures', offerLetter.signatory_signature);
-        if (fs.existsSync(sigPath)) doc.image(sigPath, 320, annexureSigY + 15, { width: 60 });
-      }
-      doc.y = annexureSigY + 55;
-      doc.fillColor(blueColor).font(boldFont).text(hrName, 320, doc.y, { underline: true });
-      doc.fillColor('black').font(mainFont).text(hrTitle, 320, doc.y + 15);
+      doc.fontSize(10).font(boldFont).fillColor('black');
+      doc.text('Conveyance charges will be 4Rs /km for the official meetings.');
+      doc.moveDown(0.5);
+
+      const fixedTotal = annexureRows.find(row => normalizeComponentLabel(row.component).includes('fixed salary'));
+      const fixedMonthlyText = fixedTotal && typeof fixedTotal.perMonth === 'number'
+        ? `₹${formatCurrency(fixedTotal.perMonth)}`
+        : '';
+
+      doc.fontSize(10).font(mainFont).fillColor('black');
+      doc.text(`• Fixed Salary: ${fixedMonthlyText} per month`, { indent: 10 });
+      doc.text('• Monthly Variable Incentive: Based on performance as per Annexure-B', { indent: 10 });
 
       // ==================== ANNEXURE-B (KRAs) ====================
       if (true) {

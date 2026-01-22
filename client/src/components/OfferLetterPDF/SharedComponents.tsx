@@ -228,69 +228,134 @@ interface AnnexureAProps {
   candidateName: string;
 }
 
-export function AnnexureA({ salaryBreakdown, candidateName }: AnnexureAProps) {
-  const totalPerMonth = salaryBreakdown.reduce((sum, item) => sum + item.perMonth, 0);
-  const totalAnnual = salaryBreakdown.reduce((sum, item) => sum + item.annual, 0);
+export function AnnexureA({ salaryBreakdown, candidateName: _candidateName }: AnnexureAProps) {
+  const normalizeLabel = (label: string) => label.toLowerCase().replace(/\s+/g, ' ').trim();
+  const rawRows = salaryBreakdown.filter(item => (item.component || '').trim().length > 0);
+  const normalized = rawRows.map(row => normalizeLabel(row.component || ''));
+
+  const isSummaryRow = (label: string) => {
+    return label === 'total' ||
+      label.startsWith('total ') ||
+      label.includes('fixed salary') ||
+      label.includes('fixed pay') ||
+      label.includes('ctc') ||
+      label.includes('variable') ||
+      label.includes('quarterly') ||
+      label.includes('gross') ||
+      label.includes('payable');
+  };
+
+  const isVariableRow = (label: string) => label.includes('variable');
+
+  const baseRows = rawRows.filter((row, idx) => {
+    const label = normalized[idx];
+    return !isSummaryRow(label) && !isVariableRow(label);
+  });
+
+  const fixedMonthly = baseRows.reduce(
+    (sum, item) => sum + (typeof item.perMonth === 'number' ? item.perMonth : 0),
+    0
+  );
+  const fixedAnnual = baseRows.reduce(
+    (sum, item) => sum + (typeof item.annual === 'number' ? item.annual : 0),
+    0
+  );
+
+  const fixedRowIndex = normalized.findIndex(label => label.includes('fixed salary'));
+  const variableRowIndex = normalized.findIndex(label => label.includes('variable'));
+  const totalCtcIndex = normalized.findIndex(label => label.includes('total ctc'));
+
+  const fixedRow = fixedRowIndex >= 0
+    ? {
+        ...rawRows[fixedRowIndex],
+        perMonth: typeof rawRows[fixedRowIndex].perMonth === 'number' ? rawRows[fixedRowIndex].perMonth : fixedMonthly,
+        annual: typeof rawRows[fixedRowIndex].annual === 'number' ? rawRows[fixedRowIndex].annual : fixedAnnual,
+      }
+    : {
+        component: 'Fixed Salary (Total)',
+        perMonth: fixedMonthly,
+        annual: fixedAnnual,
+      };
+
+  const variableAnnual = variableRowIndex >= 0 && typeof rawRows[variableRowIndex].annual === 'number'
+    ? rawRows[variableRowIndex].annual
+    : 0;
+
+  const variableRow = variableRowIndex >= 0
+    ? {
+        ...rawRows[variableRowIndex],
+        perMonth: '-----------',
+        annual: typeof rawRows[variableRowIndex].annual === 'number' ? rawRows[variableRowIndex].annual : variableAnnual,
+      }
+    : {
+        component: 'Variable (Quarterly Payable)',
+        perMonth: '-----------',
+        annual: variableAnnual,
+      };
+
+  const totalAnnual = totalCtcIndex >= 0 && typeof rawRows[totalCtcIndex].annual === 'number'
+    ? rawRows[totalCtcIndex].annual
+    : fixedAnnual + variableAnnual;
+
+  const totalRow = totalCtcIndex >= 0
+    ? {
+        ...rawRows[totalCtcIndex],
+        perMonth: '-----------',
+        annual: totalAnnual,
+      }
+    : {
+        component: 'Total CTC (Fixed+Variable)',
+        perMonth: '-----------',
+        annual: totalAnnual,
+      };
+
+  const annexureRows: Array<{ component: string; perMonth: number | string; annual: number | string }> = [
+    ...baseRows,
+    fixedRow,
+    variableRow,
+    totalRow,
+  ];
 
   return (
     <View>
       <Text style={styles.annexureTitle}>ANNEXURE- A</Text>
       <Text style={styles.annexureSubtitle}>Salary Break Up</Text>
-      <Text style={styles.textBold}>Candidate Name: {candidateName}</Text>
 
       {/* Salary Table */}
       <View style={styles.table}>
         {/* Header Row */}
         <View style={[styles.tableRow, styles.tableHeader]}>
           <Text style={styles.tableCellHeader}>Components</Text>
-          <Text style={styles.tableCellHeader}>Per Month (in Rs.)</Text>
-          <Text style={styles.tableCellHeaderLast}>Annual (in Rs.)</Text>
+          <Text style={[styles.tableCellHeader, { textAlign: 'center' }]}>Per Month (in Rs.)</Text>
+          <Text style={[styles.tableCellHeaderLast, { textAlign: 'center' }]}>Annual (in Rs.)</Text>
         </View>
 
         {/* Data Rows */}
-        {salaryBreakdown.map((row, index) => (
+        {annexureRows.map((row, index) => (
           <View
             key={index}
-            style={
-              index === salaryBreakdown.length - 1 && totalPerMonth > 0
-                ? styles.tableRowLast
-                : styles.tableRow
-            }
+            style={index === annexureRows.length - 1 ? styles.tableRowLast : styles.tableRow}
           >
             <Text style={styles.tableCell}>{row.component}</Text>
             <Text style={styles.tableCellRight}>
-              {row.perMonth.toLocaleString('en-IN', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
+              {typeof row.perMonth === 'number'
+                ? row.perMonth.toLocaleString('en-IN', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })
+                : row.perMonth}
             </Text>
             <Text style={styles.tableCellRightLast}>
-              {row.annual.toLocaleString('en-IN', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
+              {typeof row.annual === 'number'
+                ? row.annual.toLocaleString('en-IN', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })
+                : row.annual}
             </Text>
           </View>
         ))}
 
-        {/* Total Row */}
-        {salaryBreakdown.length > 0 && (
-          <View style={[styles.tableRow, styles.tableTotal]}>
-            <Text style={styles.tableCellBold}>Fixed Salary (Total)</Text>
-            <Text style={[styles.tableCellBold, { textAlign: 'right' }]}>
-              {totalPerMonth.toLocaleString('en-IN', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
-            </Text>
-            <Text style={[styles.tableCellBold, { textAlign: 'right' }]}>
-              {totalAnnual.toLocaleString('en-IN', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
-            </Text>
-          </View>
-        )}
       </View>
       <View style={{ marginTop: 20 }}>
         <Text style={{ fontSize: 10, fontFamily: 'Helvetica-Bold', color: '#000000', marginBottom: 10 }}>
@@ -299,13 +364,13 @@ export function AnnexureA({ salaryBreakdown, candidateName }: AnnexureAProps) {
         <View style={styles.listItem}>
           <Text style={styles.listNumber}>•</Text>
           <Text style={styles.listContent}>
-            Fixed Salary: ₹{totalPerMonth.toLocaleString('en-IN')} per month
+            Fixed Salary: ₹{fixedMonthly.toLocaleString('en-IN')} per month
           </Text>
         </View>
         <View style={styles.listItem}>
           <Text style={styles.listNumber}>•</Text>
           <Text style={styles.listContent}>
-            In addition to the above salary, you will also be eligible for performance-based incentives depending on your performance and overall contribution to the project.
+            Monthly Variable Incentive: Based on performance as per Annexure-B
           </Text>
         </View>
       </View>

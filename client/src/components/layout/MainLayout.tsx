@@ -9,6 +9,7 @@ interface MainLayoutProps {
 
 export function MainLayout({ children }: MainLayoutProps) {
   const [currentPage, setCurrentPage] = useState('tasks');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const handlePageChange = (page: string) => {
     setCurrentPage(page);
@@ -17,9 +18,14 @@ export function MainLayout({ children }: MainLayoutProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Sidebar currentPage={currentPage} onPageChange={handlePageChange} />
-      <div className="ml-64 transition-all duration-300">
-        <Header />
+      <Sidebar
+        currentPage={currentPage}
+        onPageChange={handlePageChange}
+        collapsed={sidebarCollapsed}
+        onToggle={setSidebarCollapsed}
+      />
+      <div className={`${sidebarCollapsed ? 'ml-16' : 'ml-64'} transition-all duration-300`}>
+        <Header sidebarCollapsed={sidebarCollapsed} />
         <main className="p-6">{children}</main>
       </div>
     </div>

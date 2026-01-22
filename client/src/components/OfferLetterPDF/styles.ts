@@ -200,7 +200,6 @@ export const styles = StyleSheet.create({
   },
 
   tableHeader: {
-    backgroundColor: '#F3F4F6',
   },
 
   tableCell: {
@@ -239,7 +238,7 @@ export const styles = StyleSheet.create({
     flex: 1,
     padding: 8,
     fontSize: 10,
-    textAlign: 'right',
+    textAlign: 'center',
     borderRightWidth: 1,
     borderRightColor: '#000000',
     borderRightStyle: 'solid',
@@ -249,7 +248,7 @@ export const styles = StyleSheet.create({
     flex: 1,
     padding: 8,
     fontSize: 10,
-    textAlign: 'right',
+    textAlign: 'center',
   },
 
   tableCellBold: {
@@ -335,8 +334,9 @@ export const styles = StyleSheet.create({
   annexureSubtitle: {
     fontSize: 14,
     fontFamily: 'Helvetica-Bold',
-    textAlign: 'center',
-    marginBottom: 16,
+    textAlign: 'left',
+    textDecoration: 'underline',
+    marginBottom: 12,
   },
 
   // KRA List Item
