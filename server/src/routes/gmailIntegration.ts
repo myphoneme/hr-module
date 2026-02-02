@@ -66,6 +66,9 @@ router.post('/callback', async (req: Request, res: Response): Promise<void> => {
     // Exchange code for tokens
     const tokens = await exchangeCodeForTokens(code, 'gmail');
 
+    // --- DEBUGGING LOG ---
+    console.log(`Attempting to link Gmail account ${tokens.email} to user ID: ${userId}`);
+
     // Check if connection already exists for this email
     const existing = db.prepare(`
       SELECT id FROM gmail_connections WHERE email = ? AND user_id = ?
