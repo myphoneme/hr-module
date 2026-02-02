@@ -10,6 +10,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { CandidateResponsePage } from './components/recruitment/CandidateResponsePage';
 import { HeadPersonReviewPage } from './components/recruitment/HeadPersonReviewPage';
 import { ToasterProvider } from './contexts/ToasterProvider';
+import { API_BASE_URL } from './config/api';
 import './index.css';
 import App from './App.tsx';
 
@@ -43,31 +44,89 @@ const oauthCallbacks: Record<string, string> = {
   '/hr/auth/gmail/callback': 'gmail-oauth-callback',
 };
 
+const OAUTH_EVENT_KEY = 'oauth-connection-event';
+const OAUTH_CODE_KEY_PREFIX = 'oauth-connection-code:';
+
 const callbackPath = normalizeCallbackPath(window.location.pathname);
 const callbackType = oauthCallbacks[callbackPath];
 
+// This function is only used by the fallback localStorage mechanism
+const finalizeOAuth = (type: string, code: string) => {
+  const endpoint = type === 'gmail-oauth-callback' ? '/gmail/callback' : '/calendar/callback';
+  fetch(`${API_BASE_URL}${endpoint}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ code }),
+  })
+    .then(async response => {
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+      return response.json().catch(() => ({}));
+    })
+    .then(() => {
+      // Notify other tabs to reload
+      localStorage.setItem(OAUTH_EVENT_KEY, JSON.stringify({ type, ts: Date.now() }));
+      // And reload this tab
+      window.location.reload();
+    })
+    .catch(err => {
+      alert(`Authentication failed: ${err.message}`);
+    });
+};
+
+
 if (callbackType) {
-  // If the path is a callback, handle it and do not render the React app.
+  // This page is an OAuth callback popup.
   const urlParams = new URLSearchParams(window.location.search);
   const code = urlParams.get('code');
   const error = urlParams.get('error');
 
-  if (code && window.opener) {
-    // This is the primary communication path.
-    // It sends the code to the listener in AuthContext.tsx.
-    window.opener.postMessage({ type: callbackType, code }, window.location.origin);
-    document.body.innerHTML =
-      '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;"><p>Authentication successful! You can close this window.</p></div>';
-    setTimeout(() => window.close(), 1000);
-  } else if (error) {
+  if (error) {
     document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:red;"><p>Authentication failed: ${error}</p></div>`;
     setTimeout(() => window.close(), 3000);
-  } else {
-    // Handle cases where the popup opened without a window.opener or the code is missing.
-    document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:red;"><p>Could not complete authentication. Please try again.</p></div>`;
+  } else if (code) {
+    // We have a code. Try to notify the main window.
+    // Try postMessage first (ideal case)
+    if (window.opener) {
+      window.opener.postMessage({ type: callbackType, code }, window.location.origin);
+      document.body.innerHTML = '<p>Authentication successful! Closing...</p>';
+      setTimeout(() => window.close(), 1000);
+    } else {
+      // Fallback for production where window.opener is null.
+      // Set localStorage items which the main window will detect.
+      localStorage.setItem(`${OAUTH_CODE_KEY_PREFIX}${callbackType}`, code);
+      localStorage.setItem(OAUTH_EVENT_KEY, JSON.stringify({ type: 'storage-fallback', ts: Date.now() }));
+      document.body.innerHTML = '<p>Authentication successful! Closing...</p>';
+      setTimeout(() => window.close(), 1000);
+    }
   }
 } else {
-  // If the path is not a callback, render the main React application.
+  // This is the main application window, not a popup.
+  // Set up listeners and render the app.
+
+  // 1. Listen for localStorage changes to trigger a reload.
+  window.addEventListener('storage', (event) => {
+    if (event.key === OAUTH_EVENT_KEY) {
+      window.location.reload();
+    }
+  });
+
+  // 2. On page load, check if an OAuth code was stored by the fallback mechanism.
+  const storedGmailCode = localStorage.getItem(`${OAUTH_CODE_KEY_PREFIX}gmail-oauth-callback`);
+  if (storedGmailCode) {
+    localStorage.removeItem(`${OAUTH_CODE_KEY_PREFIX}gmail-oauth-callback`);
+    finalizeOAuth('gmail-oauth-callback', storedGmailCode);
+  }
+  const storedCalendarCode = localStorage.getItem(`${OAUTH_CODE_KEY_PREFIX}calendar-oauth-callback`);
+  if (storedCalendarCode) {
+    localStorage.removeItem(`${OAUTH_CODE_KEY_PREFIX}calendar-oauth-callback`);
+    finalizeOAuth('calendar-oauth-callback', storedCalendarCode);
+  }
+
+  // 3. Render the React application.
   const queryClient = new QueryClient();
   const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
