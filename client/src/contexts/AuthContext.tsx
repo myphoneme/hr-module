@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { authApi } from '../api/auth';
+import { api } from '../api/client'; // Correctly import the generic api client
 import type { User, AuthContextType } from '../types';
 
 interface ExtendedAuthContextType extends AuthContextType {
@@ -47,7 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const endpoint = type === 'gmail-oauth-callback' ? '/gmail/callback' : '/calendar/callback';
         // The main window, which is authenticated, makes this call
-        await authApi.post(endpoint, { code });
+        await api.post(endpoint, { code }); // Use the correct 'api' client
         // Reload the page to show the new "connected" status
         window.location.reload();
       } catch (error) {
