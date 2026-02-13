@@ -3,7 +3,7 @@ import { useCandidate } from '../../hooks/useRecruitment';
 import { useSignatories } from '../../hooks/useSignatories';
 import { useOfferLetters } from '../../hooks/useOfferLetters';
 import { useRAG } from '../../hooks/useRAG';
-import type { Signatory, SalaryComponent } from '../../types';
+import type { Signatory, SalaryComponent, RAGDocument } from '../../types';
 
 interface OfferLetterModalProps {
   candidateId: number;
@@ -140,7 +140,7 @@ export default function OfferLetterModal({ candidateId, onClose, onSuccess }: Of
     }
   };
 
-  const processedDocsCount = documents.filter(d => d.status === 'completed').length;
+  const processedDocsCount = documents.filter((d: RAGDocument) => d.status === 'completed').length;
 
   if (candidateLoading) {
     return (

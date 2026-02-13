@@ -11,8 +11,6 @@ import { TransactionNatureManager } from './components/TransactionNatureManager'
 import { CategoryGroupManager } from './components/CategoryGroupManager';
 import { CategoryManager } from './components/CategoryManager';
 import OfferLetterManager from './components/OfferLetterManager';
-import RAGOfferLetterManager from './components/RAGOfferLetterManager';
-import PromptOfferLetterGenerator from './components/PromptOfferLetterGenerator';
 import LetterheadManager from './components/LetterheadManager';
 import { RecruitmentHub } from './components/RecruitmentHub';
 import { Sidebar, Header } from './components/layout';
@@ -74,8 +72,6 @@ function App() {
   if (currentPage === 'category-group' && isAdmin) return <CategoryGroupManager onBack={() => setCurrentPage('dashboard')} />;
   if (currentPage === 'category' && isAdmin) return <CategoryManager onBack={() => setCurrentPage('dashboard')} />;
   if (currentPage === 'offer-letters' && isAdmin) return <OfferLetterManager onBack={() => setCurrentPage('dashboard')} />;
-  if (currentPage === 'ai-training' && isAdmin) return <RAGOfferLetterManager onBack={() => setCurrentPage('dashboard')} />;
-  if (currentPage === 'ai-offer-generator' && isAdmin) return <PromptOfferLetterGenerator onBack={() => setCurrentPage('dashboard')} />;
   if (currentPage === 'letterheads' && isAdmin) return <LetterheadManager onBack={() => setCurrentPage('dashboard')} />;
 
   // Main app with sidebar
@@ -102,7 +98,7 @@ function App() {
         </div>
 
         <AIAssistant isOpen={showAIChat} onClose={() => setShowAIChat(false)} />
-        <Messages isOpen={showMessages} onClose={() => setShowMessages(false)} />
+        <Messages isOpen={showMessages} onClose={() => setShowAIChat(false)} />
       </div>
     </MockRecruitmentProvider>
   );
@@ -114,12 +110,10 @@ function DashboardPage() {
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Dashboard</h1>
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-12 text-center">
         <div className="w-20 h-20 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-          <svg className="w-10 h-10 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg viewBox="0 0 40 40" className="w-10 h-10 text-white">
             <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+              fill="currentColor"
+              d="M20 4C11.16 4 4 11.16 4 20c0 3.09.88 5.97 2.4 8.4L4 36l7.6-2.4C14.03 35.12 16.91 36 20 36c8.84 0 16-7.16 16-16S28.84 4 20 4zm-2 22v-8h8v-4h-8V8h4v6h8v8h-8v4h-4z"
             />
           </svg>
         </div>

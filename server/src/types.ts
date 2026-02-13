@@ -520,6 +520,7 @@ export interface OfferLetter {
   candidate_name: string;
   candidate_address: string;
   designation: string;
+  project_details?: string;
   joining_date: string;
   annual_ctc: number;
   salary_breakdown: string; // JSON string of SalaryComponent[]
@@ -563,6 +564,7 @@ export interface CreateOfferLetterInput {
   candidate_name: string;
   candidate_address: string;
   designation: string;
+  project_details?: string;
   joining_date: string;
   annual_ctc: number;
   salary_breakdown: SalaryComponent[];

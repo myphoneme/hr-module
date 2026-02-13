@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import {
   useRecruitmentStats,
@@ -9,7 +8,6 @@ import {
 import { VacancyManager } from './recruitment/VacancyManager';
 import { CandidateManager } from './recruitment/CandidateManager';
 import { InterviewManager } from './recruitment/InterviewManager';
-import { HRDocumentsManager } from './recruitment/HRDocumentsManager';
 import ResumeScreening from './recruitment/ResumeScreening';
 import OfferLetterTab from './recruitment/OfferLetterTab';
 import { GmailConnectionManager } from './automation/GmailConnectionManager';
@@ -17,7 +15,7 @@ import { SignatoryManager } from './SignatoryManager';
 import LetterheadManager from './LetterheadManager';
 
 
-type TabType = 'dashboard' | 'vacancies' | 'resume-screening' | 'candidates' | 'interviews' | 'offer-letters' | 'documents' | 'settings' | 'signatories' | 'letterheads';
+type TabType = 'dashboard' | 'vacancies' | 'resume-screening' | 'candidates' | 'interviews' | 'offer-letters' | 'settings' | 'signatories' | 'letterheads';
 
 interface RecruitmentHubProps {
   onBack?: () => void;
@@ -39,7 +37,6 @@ export function RecruitmentHub({ onBack }: RecruitmentHubProps) {
     { id: 'candidates' as TabType, label: 'Candidates', icon: '👥', count: candidates?.length || null },
     { id: 'interviews' as TabType, label: 'Interviews', icon: '🗓️', count: interviews?.length || null },
     { id: 'offer-letters' as TabType, label: 'Offer Letters', icon: '📝', count: null },
-    { id: 'documents' as TabType, label: 'HR Docs', icon: '📁', count: null },
     { id: 'settings' as TabType, label: 'Settings', icon: '⚙️', count: null },
     { id: 'signatories' as TabType, label: 'Signatories', icon: '✍️', count: null },
     { id: 'letterheads' as TabType, label: 'Letterheads', icon: '📜', count: null },
@@ -112,7 +109,6 @@ export function RecruitmentHub({ onBack }: RecruitmentHubProps) {
         {activeTab === 'candidates' && <CandidateManager />}
         {activeTab === 'interviews' && <InterviewManager />}
         {activeTab === 'offer-letters' && <OfferLetterTab />}
-        {activeTab === 'documents' && <HRDocumentsManager />}
         {activeTab === 'settings' && (
           <div className="space-y-6">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">

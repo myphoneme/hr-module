@@ -500,6 +500,7 @@ export interface OfferLetter {
   candidate_name: string;
   candidate_address: string;
   designation: string;
+  project_details?: string; // Add this line
   joining_date: string;
   annual_ctc: number;
   salary_breakdown: string;
@@ -543,6 +544,7 @@ export interface CreateOfferLetterInput {
   candidate_name: string;
   candidate_address: string;
   designation: string;
+  project_details?: string; // Add this line
   joining_date: string;
   annual_ctc: number;
   salary_breakdown: SalaryComponent[];
