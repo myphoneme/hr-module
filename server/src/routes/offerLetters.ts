@@ -161,6 +161,7 @@ router.post('/', authenticateToken, (req, res) => {
     if (!input.candidate_address) missingFields.push('candidate_address');
     if (!input.designation) missingFields.push('designation');
     if (!input.joining_date) missingFields.push('joining_date');
+    if (!input.offer_valid_till) missingFields.push('offer_valid_till');
     if (input.annual_ctc === undefined) missingFields.push('annual_ctc');
     if (!input.salary_breakdown) missingFields.push('salary_breakdown');
     

@@ -125,7 +125,7 @@ export default function OfferLetterModal({ candidateId, onClose, onSuccess }: Of
         joining_date: formData.joining_date,
         letter_date: new Date().toISOString().split('T')[0],
         annual_ctc: formData.annual_ctc,
-        offer_valid_till: formData.offer_valid_till,
+        offer_valid_till: formData.offer_valid_till || getDefaultValidTill(),
         working_location: formData.working_location,
         hr_manager_name: selectedSignatory?.name || '',
         hr_manager_title: selectedSignatory?.position || '',

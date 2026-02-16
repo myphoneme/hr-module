@@ -14,11 +14,17 @@ const formatDateForInput = (dateStr: string): string => {
   return date.toISOString().split('T')[0];
 };
 
-const getDefaultValidTill = (): string => {
-  const date = new Date();
-  date.setDate(date.getDate() + 7);
-  return date.toISOString().split('T')[0];
-};
+const getDefaultJoiningDate = () => {
+    const date = new Date();
+    date.setDate(date.getDate() + 30);
+    return date.toISOString().split('T')[0];
+  };
+
+const getDefaultValidTill = () => {
+    const date = new Date();
+    date.setDate(date.getDate() + 7);
+    return date.toISOString().split('T')[0];
+  };
 
 // Helper function to calculate salary breakdown (replicated from server for client-side preview)
 const generateSalaryBreakdown = (annualCtc: number): SalaryComponent[] => {
@@ -154,7 +160,7 @@ export default function OfferLetterManager({ onBack, preSelectedCandidateId }: O
       candidate_address: candidate?.city || '', // Simplified for now
       designation: candidate?.vacancy_title || candidate?.current_designation || '',
       project_details: candidate?.vacancy_title || '', // Added, using vacancy_title as a placeholder
-      joining_date: '',
+      joining_date: getDefaultJoiningDate(),
       annual_ctc: candidate?.expected_salary || 0,
       salary_breakdown: generateSalaryBreakdown(candidate?.expected_salary || 0),
       kra_details: '',
@@ -184,8 +190,8 @@ export default function OfferLetterManager({ onBack, preSelectedCandidateId }: O
     setError(null); // Clear previous errors
 
     // Basic validation
-    if (!formData.candidate_name || !formData.designation || !formData.joining_date || !formData.offer_valid_till || formData.annual_ctc === undefined || formData.annual_ctc <= 0) {
-      setError('Please fill all required fields (Candidate Name, Designation, Joining Date, Offer Valid Till, Annual CTC)');
+    if (!formData.candidate_name || !formData.designation || !formData.joining_date || formData.annual_ctc === undefined || formData.annual_ctc <= 0) {
+      setError('Please fill all required fields (Candidate Name, Designation, Joining Date, Annual CTC)');
       return;
     }
 
@@ -264,7 +270,6 @@ export default function OfferLetterManager({ onBack, preSelectedCandidateId }: O
         annual_ctc: candidate.expected_salary || 0,
         working_location: candidate.city || '', // Assuming city for working location
         salary_breakdown: generateSalaryBreakdown(candidate.expected_salary || 0),
-        offer_valid_till: prev.offer_valid_till || getDefaultValidTill(),
       } : null);
     }
   };
@@ -329,10 +334,6 @@ export default function OfferLetterManager({ onBack, preSelectedCandidateId }: O
               <div>
                 <label htmlFor="joining_date" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Joining Date</label>
                 <input type="date" id="joining_date" value={formData.joining_date} onChange={(e) => updateField('joining_date', e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" required />
-              </div>
-              <div>
-                <label htmlFor="offer_valid_till" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Offer Valid Till</label>
-                <input type="date" id="offer_valid_till" value={formData.offer_valid_till} onChange={(e) => updateField('offer_valid_till', e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" required />
               </div>
               <div>
                 <label htmlFor="annual_ctc" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Annual CTC (₹)</label>
