@@ -388,6 +388,11 @@ router.get('/:id/pdf', authenticateToken, async (req, res) => {
     const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
+
+    // Capture console output from the page for debugging
+    page.on('console', msg => console.log('PAGE CONSOLE:', msg.text()));
+    page.on('pageerror', err => console.error('PAGE ERROR:', err.toString()));
+
     const pdfBuffer = await page.pdf({
         format: 'A4',
         printBackground: true,
