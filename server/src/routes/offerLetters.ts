@@ -391,7 +391,7 @@ router.get('/:id/pdf', authenticateToken, async (req, res) => {
 
     // Capture console output from the page for debugging
     page.on('console', msg => console.log('PAGE CONSOLE:', msg.text()));
-    page.on('pageerror', err => console.error('PAGE ERROR:', err.toString()));
+    page.on('pageerror', err => console.error('PAGE ERROR:', (err as Error).toString()));
 
     const pdfBuffer = await page.pdf({
         format: 'A4',
