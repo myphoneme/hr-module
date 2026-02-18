@@ -244,6 +244,13 @@ export default function OfferLetterTab() {
                           Preview
                         </button>
                         <button
+                          onClick={() => window.open(`${API_BASE_URL}/offer-letters/${letter.id}/pdf`, '_blank')}
+                          className="px-3 py-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded text-sm"
+                          title="Download PDF"
+                        >
+                          Download
+                        </button>
+                        <button
                           onClick={() => handleDelete(letter.id)}
                           className="px-3 py-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded text-sm"
                           title="Delete"
