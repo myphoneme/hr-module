@@ -377,22 +377,22 @@ router.get('/:id/pdf', authenticateToken, async (req, res) => {
       </div>
     `;
 
-    const footerTemplate = `
-      <div style="font-family: Roboto, sans-serif; font-size: 9px; width: 100%; border-top: 1px solid #ff6600; padding: 10px 1in; box-sizing: border-box; text-align: left;">
-        Phoneme Solutions Pvt Ltd. Advant Navis Business Park,B- 614 Sector 142,Noida -201307 CIN: U74999DL2015PTC275921GST:<br>
-        07AAHCP9748G1ZX Reg.Off: 1/22, 2nd Floor, Asaf Ali Road, New Delhi-110017<a href="mailto:info@myphoneme.com" style="color:#333; text-decoration: none;">info@myphoneme.com</a><br>
-        <a href="http://www.myphoneme.com" style="color:#333; text-decoration: none;">http://www.myphoneme.com</a>
-      </div>
-    `;
+	    const footerLineSvg = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='3' viewBox='0 0 100 3' preserveAspectRatio='none'><rect x='0' y='0' width='70' height='3' fill='%23ff6600'/><rect x='70' y='0' width='30' height='3' fill='%23000000'/></svg>";
+	    const footerTemplate = `
+	      <div style="font-family: Roboto, sans-serif; font-size: 9px; width: 100%; padding: 8px 1in 10px; box-sizing: border-box; text-align: left;">
+	        <div style="width: calc(100% + 2in); margin-left: -1in;">
+	          <img src="${footerLineSvg}" style="display: block; width: 100%; height: 3px; margin: 0 0 6px 0;" />
+	        </div>
+	        <div style="width: calc(100% + 0.5in);">
+	          Phoneme Solutions Pvt Ltd. Advant Navis Business Park, B- 614 Sector 142, Noida -201307 CIN: U74999DL2015PTC275921 GST: 07AAHCP9748G1ZX Reg.Off: 1/22, 2nd Floor, Asaf Ali Road, New Delhi-110017 <a href="mailto:info@myphoneme.com" style="color:#333; text-decoration: none;">info@myphoneme.com</a><br>
+	          <a href="http://www.myphoneme.com" style="color:#333; text-decoration: none;">http://www.myphoneme.com</a>
+	        </div>
+	      </div>
+	    `;
 
     const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
-
-    // Capture console output from the page for debugging
-    page.on('console', msg => console.log('PAGE CONSOLE:', msg.text()));
-    page.on('pageerror', err => console.error('PAGE ERROR:', (err as Error).toString()));
-
     const pdfBuffer = await page.pdf({
         format: 'A4',
         printBackground: true,
