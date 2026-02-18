@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useOfferLetters } from '../hooks/useOfferLetters';
 import { useSignatories } from '../hooks/useSignatories';
 import { useLetterheads } from '../hooks/useLetterheads';
@@ -30,8 +30,9 @@ const getDefaultValidTill = () => {
 const generateSalaryBreakdown = (annualCtc: number): SalaryComponent[] => {
   const basicPercent = 40;
   const hraPercent = 20;
-  const specialPercent = 25;
-  const otherPercent = 15;
+  const travelPercent = 10;
+  const specialPercent = 20;
+  const otherPercent = 10;
 
   const calculateComponent = (percent: number) => {
     const annual = Math.round(annualCtc * percent / 100);
@@ -42,26 +43,42 @@ const generateSalaryBreakdown = (annualCtc: number): SalaryComponent[] => {
   return [
     { component: 'Basic Salary', ...calculateComponent(basicPercent) },
     { component: 'HRA', ...calculateComponent(hraPercent) },
+    { component: 'Travel Reimbursement', ...calculateComponent(travelPercent) },
     { component: 'Special Allowance', ...calculateComponent(specialPercent) },
-    { component: 'Other Allowances', ...calculateComponent(otherPercent) },
+    { component: 'Other Expenditure', ...calculateComponent(otherPercent) },
   ];
+};
+
+const computeTotalsFromBreakdown = (breakdown: SalaryComponent[]) => {
+  const fixedAnnual = breakdown.reduce((sum, item) => sum + (item.annual || 0), 0);
+  const fixedMonthly = Math.round(fixedAnnual / 12);
+  const variableAnnual = 0;
+  const variableMonthly = 0;
+  const totalAnnual = fixedAnnual + variableAnnual;
+  const totalMonthly = fixedMonthly + variableMonthly;
+  return { fixedMonthly, fixedAnnual, variableMonthly, variableAnnual, totalMonthly, totalAnnual };
 };
 
 interface OfferLetterManagerProps {
   onBack?: () => void;
   preSelectedCandidateId?: number | null; // Add this prop
+  preSelectedOfferLetterId?: number | null;
+  onSuccess?: (message: string) => void;
 }
 
 type ViewMode = 'list' | 'create' | 'edit';
 
 // Define a local type for the formData state in the component
-interface OfferLetterFormData extends Omit<CreateOfferLetterInput, 'kra_details' | 'joining_bonus' | 'project_details'> {
+interface OfferLetterFormData extends Omit<CreateOfferLetterInput, 'kra_details' | 'joining_bonus' | 'project_details' | 'client_site_location' | 'reporting_person' | 'reporting_location'> {
     kra_details: string; // KRA details are managed as a single string for the textarea
     joining_bonus?: number; // Ensure it's number or undefined
     project_details?: string; // Add project_details to the form data
+    client_site_location?: string;
+    reporting_person?: string;
+    reporting_location?: string;
 }
 
-export default function OfferLetterManager({ onBack, preSelectedCandidateId }: OfferLetterManagerProps = {}) {
+export default function OfferLetterManager({ onBack, preSelectedCandidateId, preSelectedOfferLetterId, onSuccess }: OfferLetterManagerProps = {}) {
   const {
     offerLetters,
     isLoading,
@@ -80,6 +97,16 @@ export default function OfferLetterManager({ onBack, preSelectedCandidateId }: O
   const [editingLetterId, setEditingLetterId] = useState<number | null>(null);
   const [formData, setFormData] = useState<OfferLetterFormData | null>(null); // Use the new local type
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const autoOpenedFromCandidate = useRef(false);
+  const [salaryEdited, setSalaryEdited] = useState(false);
+  const [totalsEdited, setTotalsEdited] = useState(false);
+
+  useEffect(() => {
+    if (currentView === 'list') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [currentView]);
 
   // Effect to populate form when editing an existing letter
   useEffect(() => {
@@ -108,11 +135,15 @@ export default function OfferLetterManager({ onBack, preSelectedCandidateId }: O
           kraDetails = letterToEdit.kra_details as unknown as KRADetail[];
         }
 
+        const computedTotals = computeTotalsFromBreakdown(salaryBreakdown);
         setFormData({
           candidate_name: letterToEdit.candidate_name,
           candidate_address: letterToEdit.candidate_address,
           designation: letterToEdit.designation,
           project_details: letterToEdit.project_details || '', // Added project_details
+          client_site_location: letterToEdit.client_site_location || '',
+          reporting_person: letterToEdit.reporting_person || '',
+          reporting_location: letterToEdit.reporting_location || '',
           joining_date: formatDateForInput(letterToEdit.joining_date),
           annual_ctc: letterToEdit.annual_ctc,
           salary_breakdown: salaryBreakdown,
@@ -126,40 +157,79 @@ export default function OfferLetterManager({ onBack, preSelectedCandidateId }: O
           signatory_id: letterToEdit.signatory_id,
           secondary_signatory_id: letterToEdit.secondary_signatory_id,
           letterhead_id: letterToEdit.letterhead_id,
+          fixed_monthly_total: letterToEdit.fixed_monthly_total ?? computedTotals.fixedMonthly,
+          fixed_annual_total: letterToEdit.fixed_annual_total ?? computedTotals.fixedAnnual,
+          variable_monthly_total: letterToEdit.variable_monthly_total ?? computedTotals.variableMonthly,
+          variable_annual_total: letterToEdit.variable_annual_total ?? computedTotals.variableAnnual,
+          total_monthly_ctc: letterToEdit.total_monthly_ctc ?? computedTotals.totalMonthly,
+          total_annual_ctc: letterToEdit.total_annual_ctc ?? computedTotals.totalAnnual,
         });
+        setSalaryEdited(true);
+        setTotalsEdited(true);
         setCurrentView('edit');
       }
     }
   }, [editingLetterId, offerLetters]);
 
+  // Open manager directly in edit mode when requested
+  useEffect(() => {
+    if (preSelectedOfferLetterId && currentView === 'list') {
+      setEditingLetterId(preSelectedOfferLetterId);
+    }
+  }, [preSelectedOfferLetterId, currentView]);
+
   // Effect to handle preSelectedCandidateId for creating new letters
   useEffect(() => {
-    if (preSelectedCandidateId && candidates && currentView === 'list') {
+    autoOpenedFromCandidate.current = false;
+  }, [preSelectedCandidateId]);
+
+  useEffect(() => {
+    if (preSelectedCandidateId && candidates && currentView === 'list' && !autoOpenedFromCandidate.current) {
       const candidate = candidates.find(c => c.id === preSelectedCandidateId);
       if (candidate) {
         initializeFormData(candidate);
         setCurrentView('create');
+        autoOpenedFromCandidate.current = true;
       }
     }
   }, [preSelectedCandidateId, candidates, currentView]);
 
   // Effect to update salary breakdown when annual_ctc changes in formData
   useEffect(() => {
-    if (formData && formData.annual_ctc !== undefined) {
+    if (formData && formData.annual_ctc !== undefined && !salaryEdited) {
       const newSalaryBreakdown = generateSalaryBreakdown(formData.annual_ctc);
       setFormData(prev => prev ? { ...prev, salary_breakdown: newSalaryBreakdown } : null);
     }
-  }, [formData?.annual_ctc]);
+  }, [formData?.annual_ctc, salaryEdited]);
+
+  useEffect(() => {
+    if (formData && formData.salary_breakdown && !totalsEdited) {
+      const totals = computeTotalsFromBreakdown(formData.salary_breakdown);
+      setFormData(prev => prev ? {
+        ...prev,
+        fixed_monthly_total: totals.fixedMonthly,
+        fixed_annual_total: totals.fixedAnnual,
+        variable_monthly_total: totals.variableMonthly,
+        variable_annual_total: totals.variableAnnual,
+        total_monthly_ctc: totals.totalMonthly,
+        total_annual_ctc: totals.totalAnnual,
+      } : null);
+    }
+  }, [formData?.salary_breakdown, totalsEdited]);
 
   const initializeFormData = (candidate?: Candidate) => {
     const defaultLetterhead = letterheads?.find(lh => lh.is_default) || letterheads?.[0];
     const defaultSignatory = signatories?.[0];
 
+    const computedTotals = computeTotalsFromBreakdown(generateSalaryBreakdown(candidate?.expected_salary || 0));
     setFormData({
       candidate_name: candidate ? `${candidate.first_name} ${candidate.last_name}` : '',
       candidate_address: candidate?.city || '', // Simplified for now
       designation: candidate?.vacancy_title || candidate?.current_designation || '',
       project_details: candidate?.vacancy_title || '', // Added, using vacancy_title as a placeholder
+      client_site_location: candidate?.city || '',
+      reporting_person: '',
+      reporting_location: '',
       joining_date: getDefaultJoiningDate(),
       annual_ctc: candidate?.expected_salary || 0,
       salary_breakdown: generateSalaryBreakdown(candidate?.expected_salary || 0),
@@ -173,7 +243,15 @@ export default function OfferLetterManager({ onBack, preSelectedCandidateId }: O
       signatory_id: defaultSignatory?.id,
       secondary_signatory_id: undefined,
       letterhead_id: defaultLetterhead?.id,
+      fixed_monthly_total: computedTotals.fixedMonthly,
+      fixed_annual_total: computedTotals.fixedAnnual,
+      variable_monthly_total: computedTotals.variableMonthly,
+      variable_annual_total: computedTotals.variableAnnual,
+      total_monthly_ctc: computedTotals.totalMonthly,
+      total_annual_ctc: computedTotals.totalAnnual,
     });
+    setSalaryEdited(false);
+    setTotalsEdited(false);
     setEditingLetterId(null);
     setCurrentView('create');
   };
@@ -209,21 +287,34 @@ export default function OfferLetterManager({ onBack, preSelectedCandidateId }: O
       annual_ctc: Number(formData.annual_ctc),
       kra_details: kraArray, // kra_details is now KRADetail[]
       project_details: formData.project_details, // Added project_details
+      client_site_location: formData.client_site_location,
+      reporting_person: formData.reporting_person,
+      reporting_location: formData.reporting_location,
       hr_manager_name: selectedSignatory?.name || '',
       hr_manager_title: selectedSignatory?.position || '',
       secondary_signatory_id: selectedSecondarySignatory?.id,
-      salary_breakdown: generateSalaryBreakdown(Number(formData.annual_ctc)), // Recalculate to ensure consistency
+      salary_breakdown: formData.salary_breakdown,
     };
 
     try {
       if (editingLetterId) {
         await updateOfferLetter(editingLetterId, dataToSubmit);
+        const msg = 'Offer letter updated successfully.';
+        setSuccessMessage(msg);
+        onSuccess?.(msg);
+        setCurrentView('list');
+        setEditingLetterId(null);
+        setFormData(null);
+        if (onBack) onBack();
       } else {
         await createOfferLetter(dataToSubmit);
+        const msg = 'Offer letter created successfully.';
+        setSuccessMessage(msg);
+        onSuccess?.(msg);
+        setCurrentView('list');
+        setEditingLetterId(null);
+        setFormData(null);
       }
-      setCurrentView('list');
-      setEditingLetterId(null);
-      setFormData(null);
     } catch (err: any) {
       console.error('Error saving offer letter:', err);
       setError(err.message || 'Failed to save offer letter');
@@ -231,7 +322,7 @@ export default function OfferLetterManager({ onBack, preSelectedCandidateId }: O
   };
 
   const handleDownload = (id: number) => {
-    window.open(`${API_BASE_URL}/offer-letters/${id}/pdf`, '_blank');
+    window.open(`${API_BASE_URL}/offer-letters/${id}/pdf?preview=1`, '_blank');
   };
 
   const handleDelete = async (id: number) => {
@@ -258,9 +349,42 @@ export default function OfferLetterManager({ onBack, preSelectedCandidateId }: O
     setFormData(prev => prev ? { ...prev, [field]: value } : null);
   };
 
+  const updateSalaryComponent = (index: number, perMonthValue: number) => {
+    if (!formData) return;
+    const perMonth = Number.isFinite(perMonthValue) ? Math.max(0, perMonthValue) : 0;
+    const updated = formData.salary_breakdown.map((item, i) => {
+      if (i !== index) return item;
+      return { ...item, perMonth, annual: Math.round(perMonth * 12) };
+    });
+    setFormData(prev => prev ? { ...prev, salary_breakdown: updated } : null);
+    setSalaryEdited(true);
+  };
+
+  const updateTotalField = (field: keyof OfferLetterFormData, value: number) => {
+    if (!formData) return;
+    const numeric = Number.isFinite(value) ? Math.max(0, value) : 0;
+    setFormData(prev => {
+      if (!prev) return null;
+      const next = { ...prev, [field]: numeric };
+      if (field === 'fixed_monthly_total' || field === 'variable_monthly_total') {
+        const fm = Number(next.fixed_monthly_total || 0);
+        const vm = Number(next.variable_monthly_total || 0);
+        next.total_monthly_ctc = fm + vm;
+      }
+      if (field === 'fixed_annual_total' || field === 'variable_annual_total') {
+        const fa = Number(next.fixed_annual_total || 0);
+        const va = Number(next.variable_annual_total || 0);
+        next.total_annual_ctc = fa + va;
+      }
+      return next;
+    });
+    setTotalsEdited(true);
+  };
+
   const handleCandidateSelect = (candidateId: number) => {
     const candidate = candidates?.find(c => c.id === candidateId);
     if (candidate) {
+      const computedTotals = computeTotalsFromBreakdown(generateSalaryBreakdown(candidate.expected_salary || 0));
       setFormData(prev => prev ? {
         ...prev,
         candidate_name: `${candidate.first_name} ${candidate.last_name}`,
@@ -270,13 +394,22 @@ export default function OfferLetterManager({ onBack, preSelectedCandidateId }: O
         annual_ctc: candidate.expected_salary || 0,
         working_location: candidate.city || '', // Assuming city for working location
         salary_breakdown: generateSalaryBreakdown(candidate.expected_salary || 0),
+        fixed_monthly_total: computedTotals.fixedMonthly,
+        fixed_annual_total: computedTotals.fixedAnnual,
+        variable_monthly_total: computedTotals.variableMonthly,
+        variable_annual_total: computedTotals.variableAnnual,
+        total_monthly_ctc: computedTotals.totalMonthly,
+        total_annual_ctc: computedTotals.totalAnnual,
       } : null);
+      setSalaryEdited(false);
+      setTotalsEdited(false);
     }
   };
 
   // Render Section
   if (currentView === 'create' || currentView === 'edit') {
     if (!formData) return null; // Should not happen if logic is correct
+    const liveTotals = computeTotalsFromBreakdown(formData.salary_breakdown || []);
 
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
@@ -330,6 +463,20 @@ export default function OfferLetterManager({ onBack, preSelectedCandidateId }: O
               <label htmlFor="project_details" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Project Details</label>
               <input type="text" id="project_details" value={formData.project_details || ''} onChange={(e) => updateField('project_details', e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
             </div>
+            <div>
+              <label htmlFor="client_site_location" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Client Site Location</label>
+              <input type="text" id="client_site_location" value={formData.client_site_location || ''} onChange={(e) => updateField('client_site_location', e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="reporting_person" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Reporting Person</label>
+                <input type="text" id="reporting_person" value={formData.reporting_person || ''} onChange={(e) => updateField('reporting_person', e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
+              </div>
+              <div>
+                <label htmlFor="reporting_location" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Reporting Location</label>
+                <input type="text" id="reporting_location" value={formData.reporting_location || ''} onChange={(e) => updateField('reporting_location', e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
+              </div>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="joining_date" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Joining Date</label>
@@ -345,10 +492,10 @@ export default function OfferLetterManager({ onBack, preSelectedCandidateId }: O
               <input type="text" id="working_location" value={formData.working_location || ''} onChange={(e) => updateField('working_location', e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200" />
             </div>
 
-            {/* Salary Breakdown Preview */}
+            {/* Salary Breakdown Editor */}
             {formData.annual_ctc > 0 && (
               <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gray-50 dark:bg-gray-700">
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Salary Breakdown Preview (Annexure A)</h3>
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Salary Breakdown (Annexure A)</h3>
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                   <thead className="bg-gray-100 dark:bg-gray-600">
                     <tr>
@@ -361,15 +508,91 @@ export default function OfferLetterManager({ onBack, preSelectedCandidateId }: O
                     {formData.salary_breakdown?.map((item, index) => (
                       <tr key={index}>
                         <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{item.component}</td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 text-right">{item.perMonth?.toLocaleString('en-IN')}</td>
+                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 text-right">
+                          <input
+                            type="number"
+                            className="w-28 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-right"
+                            value={item.perMonth || 0}
+                            min={0}
+                            onChange={(e) => updateSalaryComponent(index, Number(e.target.value))}
+                          />
+                        </td>
                         <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 text-right">{item.annual?.toLocaleString('en-IN')}</td>
                       </tr>
                     ))}
-                    <tr className="font-bold bg-gray-200 dark:bg-gray-600">
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white">Total CTC</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">{(Number(formData.annual_ctc) / 12).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">{Number(formData.annual_ctc).toLocaleString('en-IN')}</td>
-                    </tr>
+                    {(() => {
+                      const fixedAnnual = formData.salary_breakdown?.reduce((sum, item) => sum + (item.annual || 0), 0) || 0;
+                      const fixedMonthly = Math.round(fixedAnnual / 12);
+                      const variableAnnual = 0;
+                      const totalAnnual = fixedAnnual + variableAnnual;
+                      return (
+                        <>
+                          <tr>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white">Fixed Salary (Total)</td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                              <input
+                                type="number"
+                                className="w-28 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-right"
+                                value={formData.fixed_monthly_total ?? fixedMonthly}
+                                min={0}
+                                onChange={(e) => updateTotalField('fixed_monthly_total', Number(e.target.value))}
+                              />
+                            </td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                              <input
+                                type="number"
+                                className="w-28 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-right"
+                                value={formData.fixed_annual_total ?? fixedAnnual}
+                                min={0}
+                                onChange={(e) => updateTotalField('fixed_annual_total', Number(e.target.value))}
+                              />
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white">Variable (Quarterly Payable)</td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                              <input
+                                type="number"
+                                className="w-28 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-right"
+                                value={formData.variable_monthly_total ?? liveTotals.variableMonthly}
+                                min={0}
+                                onChange={(e) => updateTotalField('variable_monthly_total', Number(e.target.value))}
+                              />
+                            </td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                              <input
+                                type="number"
+                                className="w-28 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-right"
+                                value={formData.variable_annual_total ?? variableAnnual}
+                                min={0}
+                                onChange={(e) => updateTotalField('variable_annual_total', Number(e.target.value))}
+                              />
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white">Total CTC (Fixed+Variable)</td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                              <input
+                                type="number"
+                                className="w-28 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-right"
+                                value={formData.total_monthly_ctc ?? liveTotals.totalMonthly}
+                                min={0}
+                                onChange={(e) => updateTotalField('total_monthly_ctc', Number(e.target.value))}
+                              />
+                            </td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                              <input
+                                type="number"
+                                className="w-28 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-right"
+                                value={formData.total_annual_ctc ?? totalAnnual}
+                                min={0}
+                                onChange={(e) => updateTotalField('total_annual_ctc', Number(e.target.value))}
+                              />
+                            </td>
+                          </tr>
+                        </>
+                      );
+                    })()}
                   </tbody>
                 </table>
               </div>
@@ -411,9 +634,15 @@ export default function OfferLetterManager({ onBack, preSelectedCandidateId }: O
               <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50" disabled={isCreating || isUpdating}>
                 {(isCreating || isUpdating) ? 'Saving...' : 'Save Offer Letter'}
               </button>
-              {editingLetterId && (
-                <button type="button" onClick={() => handleDownload(editingLetterId)} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">Preview/Download PDF</button>
-              )}
+              <button
+                type="button"
+                onClick={() => editingLetterId && handleDownload(editingLetterId)}
+                className={`px-4 py-2 rounded-md ${editingLetterId ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-300 text-gray-600 cursor-not-allowed'}`}
+                disabled={!editingLetterId}
+                title={editingLetterId ? 'Preview/Download PDF' : 'Save first to enable preview'}
+              >
+                Preview/Download PDF
+              </button>
             </div>
           </form>
         </div>
@@ -444,10 +673,16 @@ export default function OfferLetterManager({ onBack, preSelectedCandidateId }: O
         </div>
 
         {error && (
-            <div className="p-3 mb-4 text-sm text-red-700 bg-red-100 rounded-lg" role="alert">
-              {error}
-            </div>
-          )}
+          <div className="p-3 mb-4 text-sm text-red-700 bg-red-100 rounded-lg" role="alert">
+            {error}
+          </div>
+        )}
+        {successMessage && (
+          <div className="p-3 mb-4 text-sm text-green-700 bg-green-100 rounded-lg flex justify-between items-center" role="alert">
+            <span>{successMessage}</span>
+            <button onClick={() => setSuccessMessage(null)} className="text-green-700 hover:text-green-900">&times;</button>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="flex justify-center items-center h-64">

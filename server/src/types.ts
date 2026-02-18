@@ -521,6 +521,15 @@ export interface OfferLetter {
   candidate_address: string;
   designation: string;
   project_details?: string;
+  client_site_location?: string;
+  reporting_person?: string;
+  reporting_location?: string;
+  fixed_monthly_total?: number;
+  fixed_annual_total?: number;
+  variable_monthly_total?: number;
+  variable_annual_total?: number;
+  total_monthly_ctc?: number;
+  total_annual_ctc?: number;
   joining_date: string;
   annual_ctc: number;
   salary_breakdown: string; // JSON string of SalaryComponent[]
@@ -565,6 +574,15 @@ export interface CreateOfferLetterInput {
   candidate_address: string;
   designation: string;
   project_details?: string;
+  client_site_location?: string;
+  reporting_person?: string;
+  reporting_location?: string;
+  fixed_monthly_total?: number;
+  fixed_annual_total?: number;
+  variable_monthly_total?: number;
+  variable_annual_total?: number;
+  total_monthly_ctc?: number;
+  total_annual_ctc?: number;
   joining_date: string;
   annual_ctc: number;
   salary_breakdown: SalaryComponent[];

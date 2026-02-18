@@ -171,15 +171,26 @@ router.post('/', authenticateToken, (req, res) => {
 
     const result = db.prepare(`
       INSERT INTO offer_letters (
-        candidate_name, candidate_address, designation, joining_date,
-        annual_ctc, salary_breakdown, working_location, hr_manager_name,
+        candidate_name, candidate_address, designation, project_details, client_site_location, reporting_person, reporting_location,
+        fixed_monthly_total, fixed_annual_total, variable_monthly_total, variable_annual_total, total_monthly_ctc, total_annual_ctc,
+        joining_date, annual_ctc, salary_breakdown, working_location, hr_manager_name,
         hr_manager_title, offer_valid_till, letter_date, template_type,
         optional_sections, kra_details, joining_bonus, signatory_id, secondary_signatory_id, letterhead_id, template_profile_id, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       input.candidate_name,
       input.candidate_address,
       input.designation,
+      input.project_details || null,
+      input.client_site_location || null,
+      input.reporting_person || null,
+      input.reporting_location || null,
+      input.fixed_monthly_total ?? null,
+      input.fixed_annual_total ?? null,
+      input.variable_monthly_total ?? null,
+      input.variable_annual_total ?? null,
+      input.total_monthly_ctc ?? null,
+      input.total_annual_ctc ?? null,
       input.joining_date,
       input.annual_ctc,
       JSON.stringify(input.salary_breakdown),
@@ -335,9 +346,13 @@ router.get('/:id/pdf', authenticateToken, async (req, res) => {
     const specialAllowanceMonthly = salaryBreakdown.find(c => c.component.toLowerCase() === 'special allowance')?.perMonth || 0;
     const otherAllowancesMonthly = salaryBreakdown.find(c => c.component.toLowerCase() === 'other expenditure *')?.perMonth || 0;
 
-    const fixedSalaryTotalMonthly = basicSalaryMonthly + hraMonthly + travelAllowanceMonthly + specialAllowanceMonthly + otherAllowancesMonthly;
-    const fixedSalaryTotalAnnual = offerLetter.annual_ctc; // Assume annual_ctc is the total fixed
-    const variableAnnual = 0; // Or calculate if there's a variable component
+    const computedFixedMonthly = basicSalaryMonthly + hraMonthly + travelAllowanceMonthly + specialAllowanceMonthly + otherAllowancesMonthly;
+    const computedFixedAnnual = offerLetter.annual_ctc; // Assume annual_ctc is the total fixed
+    const computedVariableAnnual = 0; // Or calculate if there's a variable component
+
+    const fixedSalaryTotalMonthly = offerLetter.fixed_monthly_total ?? computedFixedMonthly;
+    const fixedSalaryTotalAnnual = offerLetter.fixed_annual_total ?? computedFixedAnnual;
+    const variableAnnual = offerLetter.variable_annual_total ?? computedVariableAnnual;
 
     const annexureADetails = salaryBreakdown.map(item => ({
         component: item.component,
@@ -354,18 +369,21 @@ router.get('/:id/pdf', authenticateToken, async (req, res) => {
         candidate_address: offerLetter.candidate_address.replace(/\n/g, '<br>'),
         designation: offerLetter.designation,
         project_details: offerLetter.project_details || "a specified project",
+        client_site_location: offerLetter.client_site_location || "client side location",
+        reporting_person: offerLetter.reporting_person || "Project Manager, DFSL",
+        reporting_location: offerLetter.reporting_location || "Mumbai",
         working_location: offerLetter.working_location || "the company's premises",
         joining_date: formatDateLong(offerLetter.joining_date),
         company_full_address: "1003, Unicorn Chandak, Andheri (West), Mumbai – 400053, India.",
-        ctc_amount: offerLetter.annual_ctc.toLocaleString('en-IN'),
-        ctc_words: numberToWords(offerLetter.annual_ctc),
+        ctc_amount: (offerLetter.total_annual_ctc ?? offerLetter.annual_ctc).toLocaleString('en-IN'),
+        ctc_words: numberToWords(offerLetter.total_annual_ctc ?? offerLetter.annual_ctc),
         hr_manager_name: offerLetter.signatory_name,
         hr_manager_title: offerLetter.signatory_position,
         hr_signature: signatureBase64,
         annexure_a_details: annexureADetails,
         total_fixed_monthly: fixedSalaryTotalMonthly.toLocaleString('en-IN'),
         total_fixed_annual: fixedSalaryTotalAnnual.toLocaleString('en-IN'),
-        variable_annual: variableAnnual.toLocaleString('en-IN'),
+        variable_annual: ((offerLetter.variable_annual_total ?? variableAnnual) as number).toLocaleString('en-IN'),
         kra_details: parsedKraDetails,
     };
 
@@ -373,7 +391,7 @@ router.get('/:id/pdf', authenticateToken, async (req, res) => {
 
     const headerTemplate = `
       <div style="width: 100%; padding: 0 1in; box-sizing: border-box;">
-        <img src="data:image/png;base64,${logoBase64}" style="height: 45px;" />
+        <img src="data:image/png;base64,${logoBase64}" style="height: 45px; margin-left: -12px; margin-top: 10px;" />
       </div>
     `;
 
@@ -409,7 +427,9 @@ router.get('/:id/pdf', authenticateToken, async (req, res) => {
     await browser.close();
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="Offer_Letter_${offerLetter.candidate_name.replace(/\s+/g, '_')}.pdf"`);
+    const filename = `Offer_Letter_${offerLetter.candidate_name.replace(/\s+/g, '_')}.pdf`;
+    const preview = req.query.preview === '1' || req.query.preview === 'true';
+    res.setHeader('Content-Disposition', `${preview ? 'inline' : 'attachment'}; filename="${filename}"`);
     res.send(pdfBuffer);
     
   } catch (error) {

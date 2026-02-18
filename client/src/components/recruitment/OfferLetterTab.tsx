@@ -9,6 +9,8 @@ import { API_BASE_URL } from '../../config/api';
 export default function OfferLetterTab() {
   const [view, setView] = useState<'list' | 'manager'>('list');
   const [selectedCandidateIdForManager, setSelectedCandidateIdForManager] = useState<number | null>(null);
+  const [selectedOfferLetterIdForManager, setSelectedOfferLetterIdForManager] = useState<number | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const { offerLetters, isLoading: lettersLoading, deleteOfferLetter } = useOfferLetters();
   const { data: selectedCandidates, isLoading: candidatesLoading } = useCandidates({ status: 'selected' }); // Fetch selected candidates
@@ -24,7 +26,7 @@ export default function OfferLetterTab() {
   };
 
   const handleDownload = (letter: OfferLetterWithSignatory) => {
-    window.open(`${API_BASE_URL}/offer-letters/${letter.id}/pdf`, '_blank');
+    window.open(`${API_BASE_URL}/offer-letters/${letter.id}/pdf?preview=1`, '_blank');
   };
 
   if (view === 'manager') {
@@ -33,10 +35,20 @@ export default function OfferLetterTab() {
         onBack={() => {
           setView('list');
           setSelectedCandidateIdForManager(null);
+          setSelectedOfferLetterIdForManager(null);
+        }}
+        onSuccess={(message) => {
+          setSuccessMessage(message);
+          setView('list');
         }}
         preSelectedCandidateId={selectedCandidateIdForManager}
+        preSelectedOfferLetterId={selectedOfferLetterIdForManager}
       />
     );
+  }
+
+  if (view === 'list') {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   return (
@@ -66,6 +78,12 @@ export default function OfferLetterTab() {
         <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300 flex justify-between items-center">
           <span>{error}</span>
           <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">&times;</button>
+        </div>
+      )}
+      {successMessage && (
+        <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-green-700 dark:text-green-300 flex justify-between items-center">
+          <span>{successMessage}</span>
+          <button onClick={() => setSuccessMessage(null)} className="text-green-600 hover:text-green-800">&times;</button>
         </div>
       )}
 
@@ -128,6 +146,7 @@ export default function OfferLetterTab() {
                       <button
                         onClick={() => {
                           setSelectedCandidateIdForManager(candidate.id);
+                          setSelectedOfferLetterIdForManager(null);
                           setView('manager');
                         }}
                         className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 flex items-center gap-1.5 font-medium"
@@ -205,24 +224,31 @@ export default function OfferLetterTab() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setSelectedOfferLetterIdForManager(letter.id);
+                            setSelectedCandidateIdForManager(null);
+                            setView('manager');
+                          }}
+                          className="px-3 py-1.5 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded text-sm"
+                          title="Edit"
+                        >
+                          Edit
+                        </button>
                         <button
                           onClick={() => handleDownload(letter)}
-                          className="p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded"
-                          title="Download PDF"
+                          className="px-3 py-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded text-sm"
+                          title="Preview/Download PDF"
                         >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
+                          Preview
                         </button>
                         <button
                           onClick={() => handleDelete(letter.id)}
-                          className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded"
+                          className="px-3 py-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded text-sm"
                           title="Delete"
                         >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
+                          Delete
                         </button>
                       </div>
                     </td>

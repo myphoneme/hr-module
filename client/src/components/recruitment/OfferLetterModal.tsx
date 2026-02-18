@@ -15,9 +15,9 @@ interface OfferLetterModalProps {
 const DEFAULT_SALARY_STRUCTURE = {
   basic: 40,
   hra: 20,
-  special_allowance: 25,
-  pf_employer: 12,
-  medical: 3,
+  travel: 10,
+  special_allowance: 20,
+  other_expenditure: 10,
 };
 
 function calculateSalaryBreakdown(annualCTC: number): SalaryComponent[] {
@@ -25,15 +25,15 @@ function calculateSalaryBreakdown(annualCTC: number): SalaryComponent[] {
 
   const basic = Math.round(annualCTC * (DEFAULT_SALARY_STRUCTURE.basic / 100));
   const hra = Math.round(annualCTC * (DEFAULT_SALARY_STRUCTURE.hra / 100));
+  const travel = Math.round(annualCTC * (DEFAULT_SALARY_STRUCTURE.travel / 100));
   const specialAllowance = Math.round(annualCTC * (DEFAULT_SALARY_STRUCTURE.special_allowance / 100));
-  const pfEmployer = Math.round(annualCTC * (DEFAULT_SALARY_STRUCTURE.pf_employer / 100));
-  const medical = Math.round(annualCTC * (DEFAULT_SALARY_STRUCTURE.medical / 100));
+  const otherExpenditure = Math.round(annualCTC * (DEFAULT_SALARY_STRUCTURE.other_expenditure / 100));
 
   breakdown.push({ component: 'Basic Salary', perMonth: Math.round(basic / 12), annual: basic });
-  breakdown.push({ component: 'House Rent Allowance (HRA)', perMonth: Math.round(hra / 12), annual: hra });
+  breakdown.push({ component: 'HRA', perMonth: Math.round(hra / 12), annual: hra });
+  breakdown.push({ component: 'Travel Reimbursement', perMonth: Math.round(travel / 12), annual: travel });
   breakdown.push({ component: 'Special Allowance', perMonth: Math.round(specialAllowance / 12), annual: specialAllowance });
-  breakdown.push({ component: 'Employer PF Contribution', perMonth: Math.round(pfEmployer / 12), annual: pfEmployer });
-  breakdown.push({ component: 'Medical Allowance', perMonth: Math.round(medical / 12), annual: medical });
+  breakdown.push({ component: 'Other Expenditure', perMonth: Math.round(otherExpenditure / 12), annual: otherExpenditure });
 
   return breakdown;
 }
@@ -47,6 +47,8 @@ export default function OfferLetterModal({ candidateId, onClose, onSuccess }: Of
   const [step, setStep] = useState<'form' | 'preview' | 'success'>('form');
   const [error, setError] = useState<string | null>(null);
   const [salaryBreakdown, setSalaryBreakdown] = useState<SalaryComponent[]>([]);
+  const [salaryEdited, setSalaryEdited] = useState(false);
+  const [totalsEdited, setTotalsEdited] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -57,6 +59,12 @@ export default function OfferLetterModal({ candidateId, onClose, onSuccess }: Of
     offer_valid_till: '',
     signatory_id: '',
     template_type: 'long' as 'long' | 'short',
+    fixed_monthly_total: 0,
+    fixed_annual_total: 0,
+    variable_monthly_total: 0,
+    variable_annual_total: 0,
+    total_monthly_ctc: 0,
+    total_annual_ctc: 0,
   });
 
   // Pre-fill form when candidate data is available
@@ -75,15 +83,64 @@ export default function OfferLetterModal({ candidateId, onClose, onSuccess }: Of
         joining_date: getDefaultJoiningDate(),
         offer_valid_till: getDefaultValidTill(),
       }));
+      setSalaryEdited(false);
+      setTotalsEdited(false);
     }
   }, [candidate]);
 
   // Calculate salary breakdown when CTC changes
   useEffect(() => {
-    if (formData.annual_ctc > 0) {
+    if (formData.annual_ctc > 0 && !salaryEdited) {
       setSalaryBreakdown(calculateSalaryBreakdown(formData.annual_ctc));
     }
-  }, [formData.annual_ctc]);
+  }, [formData.annual_ctc, salaryEdited]);
+
+  useEffect(() => {
+    if (salaryBreakdown.length > 0 && !totalsEdited) {
+      const fixedAnnual = salaryBreakdown.reduce((sum, item) => sum + (item.annual || 0), 0);
+      const fixedMonthly = Math.round(fixedAnnual / 12);
+      const variableAnnual = 0;
+      const variableMonthly = 0;
+      const totalAnnual = fixedAnnual + variableAnnual;
+      const totalMonthly = fixedMonthly + variableMonthly;
+      setFormData(prev => ({
+        ...prev,
+        fixed_monthly_total: fixedMonthly,
+        fixed_annual_total: fixedAnnual,
+        variable_monthly_total: variableMonthly,
+        variable_annual_total: variableAnnual,
+        total_monthly_ctc: totalMonthly,
+        total_annual_ctc: totalAnnual,
+      }));
+    }
+  }, [salaryBreakdown, totalsEdited]);
+
+  const updateSalaryComponent = (index: number, perMonthValue: number) => {
+    const perMonth = Number.isFinite(perMonthValue) ? Math.max(0, perMonthValue) : 0;
+    setSalaryBreakdown(prev =>
+      prev.map((item, i) => (i === index ? { ...item, perMonth, annual: Math.round(perMonth * 12) } : item))
+    );
+    setSalaryEdited(true);
+  };
+
+  const updateTotalField = (field: keyof typeof formData, value: number) => {
+    const numeric = Number.isFinite(value) ? Math.max(0, value) : 0;
+    setFormData(prev => {
+      const next = { ...prev, [field]: numeric };
+      if (field === 'fixed_monthly_total' || field === 'variable_monthly_total') {
+        const fm = Number(next.fixed_monthly_total || 0);
+        const vm = Number(next.variable_monthly_total || 0);
+        next.total_monthly_ctc = fm + vm;
+      }
+      if (field === 'fixed_annual_total' || field === 'variable_annual_total') {
+        const fa = Number(next.fixed_annual_total || 0);
+        const va = Number(next.variable_annual_total || 0);
+        next.total_annual_ctc = fa + va;
+      }
+      return next;
+    });
+    setTotalsEdited(true);
+  };
 
   const getDefaultJoiningDate = () => {
     const date = new Date();
@@ -131,10 +188,16 @@ export default function OfferLetterModal({ candidateId, onClose, onSuccess }: Of
         hr_manager_title: selectedSignatory?.position || '',
         template_type: formData.template_type,
         salary_breakdown: salaryBreakdown,
+        fixed_monthly_total: formData.fixed_monthly_total,
+        fixed_annual_total: formData.fixed_annual_total,
+        variable_monthly_total: formData.variable_monthly_total,
+        variable_annual_total: formData.variable_annual_total,
+        total_monthly_ctc: formData.total_monthly_ctc,
+        total_annual_ctc: formData.total_annual_ctc,
       });
 
-      setStep('success');
       onSuccess?.();
+      onClose();
     } catch (err: any) {
       setError(err.message || 'Failed to save offer letter');
     }
@@ -322,6 +385,72 @@ export default function OfferLetterModal({ candidateId, onClose, onSuccess }: Of
                       </label>
                     </div>
                   </div>
+                  {salaryBreakdown.length > 0 && (
+                    <div className="col-span-2 mt-2 border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gray-50 dark:bg-gray-900">
+                      <h4 className="font-medium text-gray-900 dark:text-white mb-3">Salary Breakdown (Annexure A)</h4>
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-gray-500">
+                            <th className="pb-2">Component</th>
+                            <th className="pb-2 text-right">Per Month (₹)</th>
+                            <th className="pb-2 text-right">Annual (₹)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                          {salaryBreakdown.map((item, idx) => (
+                            <tr key={idx}>
+                              <td className="py-2 text-gray-900 dark:text-white">{item.component}</td>
+                              <td className="py-2 text-right">
+                                <input
+                                  type="number"
+                                  className="w-28 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-right text-gray-900 dark:text-white"
+                                  value={item.perMonth}
+                                  min={0}
+                                  onChange={(e) => updateSalaryComponent(idx, Number(e.target.value))}
+                                />
+                              </td>
+                              <td className="py-2 text-right text-gray-900 dark:text-white">
+                                {item.annual.toLocaleString('en-IN')}
+                              </td>
+                            </tr>
+                          ))}
+                          {(() => {
+                            const fixedAnnual = salaryBreakdown.reduce((sum, item) => sum + (item.annual || 0), 0);
+                            const fixedMonthly = Math.round(fixedAnnual / 12);
+                            const variableAnnual = 0;
+                            const totalAnnual = fixedAnnual + variableAnnual;
+                            return (
+                              <>
+                                <tr className="font-semibold border-t-2 border-gray-300 dark:border-gray-600">
+                                  <td className="pt-3 text-gray-900 dark:text-white">Fixed Salary (Total)</td>
+                                  <td className="pt-3 text-right text-gray-900 dark:text-white">
+                                    {fixedMonthly.toLocaleString('en-IN')}
+                                  </td>
+                                  <td className="pt-3 text-right text-gray-900 dark:text-white">
+                                    {fixedAnnual.toLocaleString('en-IN')}
+                                  </td>
+                                </tr>
+                                <tr className="font-semibold">
+                                  <td className="pt-2 text-gray-900 dark:text-white">Variable (Quarterly Payable)</td>
+                                  <td className="pt-2 text-right text-gray-900 dark:text-white">-</td>
+                                  <td className="pt-2 text-right text-gray-900 dark:text-white">
+                                    {variableAnnual.toLocaleString('en-IN')}
+                                  </td>
+                                </tr>
+                                <tr className="font-semibold">
+                                  <td className="pt-2 text-gray-900 dark:text-white">Total CTC (Fixed+Variable)</td>
+                                  <td className="pt-2 text-right text-gray-900 dark:text-white">-</td>
+                                  <td className="pt-2 text-right text-gray-900 dark:text-white">
+                                    {totalAnnual.toLocaleString('en-IN')}
+                                  </td>
+                                </tr>
+                              </>
+                            );
+                          })()}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -381,13 +510,31 @@ export default function OfferLetterModal({ candidateId, onClose, onSuccess }: Of
                             </td>
                           </tr>
                         ))}
-                        <tr className="font-semibold border-t-2 border-gray-300 dark:border-gray-600">
-                          <td className="pt-3 text-gray-900 dark:text-white">Total CTC</td>
-                          <td className="pt-3 text-right text-gray-900 dark:text-white">
-                            {Math.round(formData.annual_ctc / 12).toLocaleString('en-IN')}
+                        <tr>
+                          <td className="py-2 text-gray-900 dark:text-white">Fixed Salary (Total)</td>
+                          <td className="py-2 text-right text-gray-900 dark:text-white">
+                            {formData.fixed_monthly_total.toLocaleString('en-IN')}
                           </td>
-                          <td className="pt-3 text-right text-gray-900 dark:text-white">
-                            {formData.annual_ctc.toLocaleString('en-IN')}
+                          <td className="py-2 text-right text-gray-900 dark:text-white">
+                            {formData.fixed_annual_total.toLocaleString('en-IN')}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="py-2 text-gray-900 dark:text-white">Variable (Quarterly Payable)</td>
+                          <td className="py-2 text-right text-gray-900 dark:text-white">
+                            {formData.variable_monthly_total.toLocaleString('en-IN')}
+                          </td>
+                          <td className="py-2 text-right text-gray-900 dark:text-white">
+                            {formData.variable_annual_total.toLocaleString('en-IN')}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="py-2 text-gray-900 dark:text-white">Total CTC (Fixed+Variable)</td>
+                          <td className="py-2 text-right text-gray-900 dark:text-white">
+                            {formData.total_monthly_ctc.toLocaleString('en-IN')}
+                          </td>
+                          <td className="py-2 text-right text-gray-900 dark:text-white">
+                            {formData.total_annual_ctc.toLocaleString('en-IN')}
                           </td>
                         </tr>
                       </tbody>

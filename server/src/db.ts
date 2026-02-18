@@ -279,6 +279,16 @@ db.exec(`
     candidate_name TEXT NOT NULL,
     candidate_address TEXT NOT NULL,
     designation TEXT NOT NULL,
+    project_details TEXT,
+    client_site_location TEXT,
+    reporting_person TEXT,
+    reporting_location TEXT,
+    fixed_monthly_total REAL,
+    fixed_annual_total REAL,
+    variable_monthly_total REAL,
+    variable_annual_total REAL,
+    total_monthly_ctc REAL,
+    total_annual_ctc REAL,
     joining_date TEXT NOT NULL,
     annual_ctc REAL NOT NULL,
     salary_breakdown TEXT NOT NULL,
@@ -1322,6 +1332,46 @@ if (!offerLetterColumnNames.includes('template_type')) {
 if (!offerLetterColumnNames.includes('optional_sections')) {
   db.exec("ALTER TABLE offer_letters ADD COLUMN optional_sections TEXT DEFAULT '[]'");
   console.log('Added optional_sections column to offer_letters table');
+}
+if (!offerLetterColumnNames.includes('fixed_monthly_total')) {
+  db.exec('ALTER TABLE offer_letters ADD COLUMN fixed_monthly_total REAL');
+  console.log('Added fixed_monthly_total column to offer_letters table');
+}
+if (!offerLetterColumnNames.includes('fixed_annual_total')) {
+  db.exec('ALTER TABLE offer_letters ADD COLUMN fixed_annual_total REAL');
+  console.log('Added fixed_annual_total column to offer_letters table');
+}
+if (!offerLetterColumnNames.includes('variable_monthly_total')) {
+  db.exec('ALTER TABLE offer_letters ADD COLUMN variable_monthly_total REAL');
+  console.log('Added variable_monthly_total column to offer_letters table');
+}
+if (!offerLetterColumnNames.includes('variable_annual_total')) {
+  db.exec('ALTER TABLE offer_letters ADD COLUMN variable_annual_total REAL');
+  console.log('Added variable_annual_total column to offer_letters table');
+}
+if (!offerLetterColumnNames.includes('total_monthly_ctc')) {
+  db.exec('ALTER TABLE offer_letters ADD COLUMN total_monthly_ctc REAL');
+  console.log('Added total_monthly_ctc column to offer_letters table');
+}
+if (!offerLetterColumnNames.includes('total_annual_ctc')) {
+  db.exec('ALTER TABLE offer_letters ADD COLUMN total_annual_ctc REAL');
+  console.log('Added total_annual_ctc column to offer_letters table');
+}
+if (!offerLetterColumnNames.includes('project_details')) {
+  db.exec('ALTER TABLE offer_letters ADD COLUMN project_details TEXT');
+  console.log('Added project_details column to offer_letters table');
+}
+if (!offerLetterColumnNames.includes('client_site_location')) {
+  db.exec('ALTER TABLE offer_letters ADD COLUMN client_site_location TEXT');
+  console.log('Added client_site_location column to offer_letters table');
+}
+if (!offerLetterColumnNames.includes('reporting_person')) {
+  db.exec('ALTER TABLE offer_letters ADD COLUMN reporting_person TEXT');
+  console.log('Added reporting_person column to offer_letters table');
+}
+if (!offerLetterColumnNames.includes('reporting_location')) {
+  db.exec('ALTER TABLE offer_letters ADD COLUMN reporting_location TEXT');
+  console.log('Added reporting_location column to offer_letters table');
 }
 
 if (!offerLetterColumnNames.includes('kra_details')) {
