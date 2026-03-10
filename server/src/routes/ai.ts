@@ -1,17 +1,13 @@
 import { Router, Request, Response } from 'express';
-import OpenAI from 'openai';
 import { authenticateToken } from '../middleware/auth';
 import db from '../db';
 import type { User, Todo, TodoWithUsers } from '../types';
+import { AIProvider } from '../utils/aiProvider';
 
 const router = Router();
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || '',
-});
-
-// Define tools for task operations (OpenAI format)
-const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+// Define tools for task operations (OpenAI format, will be mapped by AIProvider)
+const tools = [
   {
     type: 'function',
     function: {
@@ -356,11 +352,6 @@ router.post('/chat', authenticateToken, async (req: Request, res: Response): Pro
     return;
   }
 
-  if (!process.env.OPENAI_API_KEY) {
-    res.status(500).json({ error: 'AI service not configured. Set OPENAI_API_KEY environment variable.' });
-    return;
-  }
-
   try {
     // Get current user info for context
     const user = db.prepare('SELECT name, email, role FROM users WHERE id = ?').get(userId) as User;
@@ -385,7 +376,7 @@ If there's an error, explain what went wrong and suggest alternatives.
 Always be professional and friendly. Use the user's name occasionally to personalize responses.`;
 
     // Build messages array with conversation history
-    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+    const messages: any[] = [
       { role: 'system', content: systemPrompt },
     ];
 
@@ -406,9 +397,7 @@ Always be professional and friendly. Use the user's name occasionally to persona
     });
 
     // Initial API call
-    let response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      max_tokens: 1024,
+    let response = await AIProvider.chat({
       messages,
       tools,
       tool_choice: 'auto',
@@ -417,29 +406,29 @@ Always be professional and friendly. Use the user's name occasionally to persona
     let assistantMessage = response.choices[0].message;
 
     // Process tool calls in a loop
-    while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+    let iterations = 0;
+    while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0 && iterations < 5) {
+      iterations++;
       // Add assistant message with tool calls to history
       messages.push(assistantMessage);
 
       // Process each tool call
       for (const toolCall of assistantMessage.tool_calls) {
-        if (toolCall.type !== 'function') continue;
-        const toolName = toolCall.function.name;
-        const toolInput = JSON.parse(toolCall.function.arguments);
+        const tc = toolCall as any;
+        const toolName = tc.function.name;
+        const toolInput = JSON.parse(tc.function.arguments);
         const toolResult = processToolCall(toolName, toolInput, userId);
 
         // Add tool result to messages
         messages.push({
           role: 'tool',
-          tool_call_id: toolCall.id,
+          tool_call_id: tc.id,
           content: toolResult,
         });
       }
 
       // Continue conversation with tool results
-      response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        max_tokens: 1024,
+      response = await AIProvider.chat({
         messages,
         tools,
         tool_choice: 'auto',

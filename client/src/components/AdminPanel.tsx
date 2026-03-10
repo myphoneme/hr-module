@@ -8,7 +8,7 @@ interface AdminPanelProps {
 }
 
 export function AdminPanel({ onBack }: AdminPanelProps) {
-  const [activeTab, setActiveTab] = useState<'users' | 'settings'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'settings' | 'ai'>('users');
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -66,13 +66,230 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
               >
                 Domain Settings
               </button>
+              <button
+                onClick={() => setActiveTab('ai')}
+                className={`px-6 py-4 font-medium transition-colors ${
+                  activeTab === 'ai'
+                    ? 'text-orange-600 border-b-2 border-orange-500'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                AI Settings
+              </button>
             </nav>
           </div>
 
           <div className="p-6">
-            {activeTab === 'users' ? <UsersTab /> : <SettingsTab />}
+            {activeTab === 'users' ? <UsersTab /> : activeTab === 'settings' ? <SettingsTab /> : <AISettingsTab />}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function AISettingsTab() {
+  const { data: aiConfigSetting, isLoading } = useSetting('ai_config');
+  const updateSetting = useUpdateSetting();
+
+  const [config, setConfig] = useState({
+    activeProvider: 'openai',
+    providers: {
+      openai: { apiKey: '', model: 'gpt-4o-mini' },
+      gemini: { apiKey: '', model: 'gemini-1.5-pro' },
+      anthropic: { apiKey: '', model: 'claude-3-5-sonnet-20240620' }
+    }
+  });
+  const [initialized, setInitialized] = useState(false);
+
+  if (aiConfigSetting && !initialized) {
+    setConfig({
+      ...config,
+      ...aiConfigSetting.value
+    });
+    setInitialized(true);
+  }
+
+  const handleSave = async () => {
+    try {
+      await updateSetting.mutateAsync({ key: 'ai_config', value: config });
+      alert('AI settings saved successfully!');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to save AI settings');
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h2 className="text-xl font-semibold text-gray-900 mb-2">Global AI Configuration</h2>
+      <p className="text-gray-500 text-sm mb-6">
+        Configure API keys and select the default provider for all AI-related features.
+      </p>
+
+      <div className="space-y-6">
+        <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Active AI Provider</label>
+          <select
+            value={config.activeProvider}
+            onChange={(e) => setConfig({ ...config, activeProvider: e.target.value })}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 bg-white"
+          >
+            <option value="openai">OpenAI</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="anthropic">Anthropic Claude</option>
+          </select>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* OpenAI Config */}
+          <div className="bg-white p-6 rounded-xl border border-gray-200">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
+                <svg viewBox="0 0 24 24" className="w-5 h-5 text-white" fill="currentColor">
+                  <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5153-4.9108 6.0462 6.0462 0 0 0-4.7471-3.1202 5.9847 5.9847 0 0 0-7.6923 3.1202 6.0462 6.0462 0 0 0-4.7471 3.1202 5.9847 5.9847 0 0 0-.5153 4.9108 6.0462 6.0462 0 0 0-3.1202 4.7471 5.9847 5.9847 0 0 0 3.1202 7.6923 6.0462 6.0462 0 0 0 4.7471 3.1202 5.9847 5.9847 0 0 0 7.6923-3.1202 6.0462 6.0462 0 0 0 4.7471-3.1202 5.9847 5.9847 0 0 0 .5153-4.9108 6.0462 6.0462 0 0 0 3.1202-4.7471 5.9847 5.9847 0 0 0-3.1202-7.6923ZM18.3051 20.1776a4.1082 4.1082 0 0 1-5.7465 0l-5.6486-5.6486 1.4142-1.4142 4.2344 4.2344V4.4142h2v12.9392l4.2344-4.2344 1.4142 1.4142-5.9021 5.6486Z" />
+                </svg>
+              </div>
+              <h3 className="font-semibold text-gray-900">OpenAI</h3>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">API Key</label>
+                <input
+                  type="password"
+                  value={config.providers.openai.apiKey}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    providers: {
+                      ...config.providers,
+                      openai: { ...config.providers.openai, apiKey: e.target.value }
+                    }
+                  })}
+                  placeholder="sk-..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Model</label>
+                <input
+                  type="text"
+                  value={config.providers.openai.model}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    providers: {
+                      ...config.providers,
+                      openai: { ...config.providers.openai, model: e.target.value }
+                    }
+                  })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Gemini Config */}
+          <div className="bg-white p-6 rounded-xl border border-gray-200">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                <svg viewBox="0 0 24 24" className="w-5 h-5 text-white" fill="currentColor">
+                  <path d="M12 2L14.85 9.15L22 12L14.85 14.85L12 22L9.15 14.85L2 12L9.15 9.15L12 2Z" />
+                </svg>
+              </div>
+              <h3 className="font-semibold text-gray-900">Google Gemini</h3>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">API Key</label>
+                <input
+                  type="password"
+                  value={config.providers.gemini.apiKey}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    providers: {
+                      ...config.providers,
+                      gemini: { ...config.providers.gemini, apiKey: e.target.value }
+                    }
+                  })}
+                  placeholder="Enter Gemini API key"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Model</label>
+                <input
+                  type="text"
+                  value={config.providers.gemini.model}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    providers: {
+                      ...config.providers,
+                      gemini: { ...config.providers.gemini, model: e.target.value }
+                    }
+                  })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Anthropic Config */}
+          <div className="bg-white p-6 rounded-xl border border-gray-200">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 bg-amber-700 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-xs">A</span>
+              </div>
+              <h3 className="font-semibold text-gray-900">Anthropic Claude</h3>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">API Key</label>
+                <input
+                  type="password"
+                  value={config.providers.anthropic.apiKey}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    providers: {
+                      ...config.providers,
+                      anthropic: { ...config.providers.anthropic, apiKey: e.target.value }
+                    }
+                  })}
+                  placeholder="sk-ant-..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Model</label>
+                <input
+                  type="text"
+                  value={config.providers.anthropic.model}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    providers: {
+                      ...config.providers,
+                      anthropic: { ...config.providers.anthropic, model: e.target.value }
+                    }
+                  })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={handleSave}
+          disabled={updateSetting.isPending}
+          className="w-full px-6 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors font-semibold shadow-md disabled:opacity-50"
+        >
+          {updateSetting.isPending ? 'Saving...' : 'Save AI Configuration'}
+        </button>
       </div>
     </div>
   );

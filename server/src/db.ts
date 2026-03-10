@@ -1435,6 +1435,32 @@ if (!domainSetting) {
   console.log('Default allowed domains setting created');
 }
 
+// Seed default AI config setting if not exists
+const aiConfigSetting = db.prepare('SELECT * FROM settings WHERE key = ?').get('ai_config') as { value: string } | undefined;
+if (!aiConfigSetting) {
+  const defaultConfig = {
+    activeProvider: 'openai',
+    providers: {
+      openai: { apiKey: process.env.OPENAI_API_KEY || '', model: 'gpt-4o-mini' },
+      gemini: { apiKey: process.env.GEMINI_API_KEY || '', model: 'gemini-1.5-flash' },
+      anthropic: { apiKey: process.env.ANTHROPIC_API_KEY || '', model: 'claude-3-5-sonnet-20240620' }
+    }
+  };
+  db.prepare(`
+    INSERT INTO settings (key, value)
+    VALUES (?, ?)
+  `).run('ai_config', JSON.stringify(defaultConfig));
+  console.log('Default AI configuration setting created');
+} else {
+  // Migration: Force update gemini-1.5-pro to gemini-1.5-flash if it's currently set
+  const currentConfig = JSON.parse(aiConfigSetting.value);
+  if (currentConfig.providers.gemini.model === 'gemini-1.5-pro') {
+    currentConfig.providers.gemini.model = 'gemini-1.5-flash';
+    db.prepare('UPDATE settings SET value = ? WHERE key = ?').run(JSON.stringify(currentConfig), 'ai_config');
+    console.log('Migrated AI configuration: updated gemini-1.5-pro to gemini-1.5-flash');
+  }
+}
+
 // Migration: Add automation columns to candidates table
 const candidateColumns = db.prepare("PRAGMA table_info(candidates)").all() as Array<{ name: string }>;
 const candidateColumnNames = candidateColumns.map(c => c.name);

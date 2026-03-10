@@ -6,7 +6,7 @@ import crypto from 'crypto';
 import db from '../db.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { getGmailClient } from '../utils/googleAuth.js';
-import OpenAI from 'openai';
+import { AIProvider } from '../utils/aiProvider';
 import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 import { clientBaseUrl } from '../config';
@@ -42,10 +42,7 @@ const upload = multer({
   }
 });
 
-// Initialize OpenAI
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// AI configuration handled by AIProvider
 
 // =====================================================
 // VACANCY ROUTES
@@ -246,7 +243,7 @@ Format the output as JSON with these keys:
 - Experience: ${experience_min || 0} - ${experience_max || 'No limit'} years
 - Key Skills: ${skills_required || 'Not specified'}`;
 
-    const completion = await openai.chat.completions.create({
+    const completion = await AIProvider.chat({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
@@ -308,7 +305,7 @@ Important rules:
 - CRITICALLY IMPORTANT: Extract ALL skills, technologies, frameworks, tools, programming languages mentioned by the user into skills_mentioned array
 - Examples of skills to capture: React, Node.js, JavaScript, TypeScript, Python, AWS, Docker, SQL, MongoDB, Git, REST API, GraphQL, etc.`;
 
-    const extractionResponse = await openai.chat.completions.create({
+    const extractionResponse = await AIProvider.chat({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: extractionPrompt },
@@ -421,7 +418,7 @@ Generate a JSON response with:
 
 Use industry-standard language for the ${mergedData.title} role. Be specific and professional.`;
 
-      const jdResponse = await openai.chat.completions.create({
+      const jdResponse = await AIProvider.chat({
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: jdPrompt }
@@ -632,7 +629,7 @@ Rules:
 - CTC should be in LPA format (e.g., "12 LPA" or "No")`;
 
       try {
-        const completion = await openai.chat.completions.create({
+        const completion = await AIProvider.chat({
           model: 'gpt-4o-mini',
           messages: [
             { role: 'system', content: 'You are an HR assistant that extracts candidate information from resumes. Be accurate and never assume data that is not present.' },
@@ -821,7 +818,7 @@ router.post('/candidates', authenticateToken, upload.single('resume'), async (re
         const base64File = fileBuffer.toString('base64');
 
         // First, extract the text
-        const textCompletion = await openai.chat.completions.create({
+        const textCompletion = await AIProvider.chat({
           model: 'gpt-4o-mini',
           messages: [
             {
@@ -847,7 +844,7 @@ router.post('/candidates', authenticateToken, upload.single('resume'), async (re
 
         // Now extract structured data including experience
         if (resume_extracted_text) {
-          const structuredCompletion = await openai.chat.completions.create({
+          const structuredCompletion = await AIProvider.chat({
             model: 'gpt-4o-mini',
             messages: [
               {
@@ -951,7 +948,7 @@ Candidate: ${first_name} ${last_name || ''}, ${experience_years || 0} yrs exp
 Skills: ${skills || 'N/A'}
 Required: ${candidateWithVacancy?.skills_required || 'N/A'}, ${candidateWithVacancy?.experience_min || 0}-${candidateWithVacancy?.experience_max || 'any'} yrs`;
 
-        const screeningCompletion = await openai.chat.completions.create({
+        const screeningCompletion = await AIProvider.chat({
           model: 'gpt-4o-mini',
           messages: [
             { role: 'system', content: screeningPrompt },
@@ -1108,7 +1105,7 @@ Required Skills: ${candidate.skills_required || 'Not specified'}
 
 ${candidate.resume_extracted_text ? `Resume Content:\n${candidate.resume_extracted_text.substring(0, 3000)}` : ''}`;
 
-    const completion = await openai.chat.completions.create({
+    const completion = await AIProvider.chat({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
@@ -1181,7 +1178,7 @@ Return ONLY a JSON object:
   "experience_calculation": "Brief explanation of how you calculated this"
 }`;
 
-    const completion = await openai.chat.completions.create({
+    const completion = await AIProvider.chat({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: extractionPrompt }],
       response_format: { type: 'json_object' },
@@ -1470,7 +1467,7 @@ Job Requirements: ${interview.requirements || 'Not specified'}
 
 ${interview.resume_extracted_text ? `Candidate Background:\n${interview.resume_extracted_text.substring(0, 2000)}` : ''}`;
 
-    const completion = await openai.chat.completions.create({
+    const completion = await AIProvider.chat({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
@@ -1752,7 +1749,7 @@ Based on the criteria, provide scoring and automatic decision:
 - Score < ${SCREENING_THRESHOLDS.AUTO_REJECT}: Auto-reject
 - Score in between: Needs manual review`;
 
-    const completion = await openai.chat.completions.create({
+    const completion = await AIProvider.chat({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
@@ -1861,7 +1858,7 @@ Candidate: ${candidateData.first_name} ${candidateData.last_name || ''}, ${candi
 Skills: ${candidateData.skills || 'N/A'}
 Required: ${candidateData.skills_required || 'N/A'}, ${candidateData.experience_min || 0}-${candidateData.experience_max || 'any'} yrs`;
 
-        const completion = await openai.chat.completions.create({
+        const completion = await AIProvider.chat({
           model: 'gpt-4o-mini',
           messages: [
             { role: 'system', content: systemPrompt },
@@ -2050,7 +2047,7 @@ Return JSON with:
   "subject_line": string
 }`;
 
-          const offerCompletion = await openai.chat.completions.create({
+          const offerCompletion = await AIProvider.chat({
             model: 'gpt-4o-mini',
             messages: [
               { role: 'system', content: 'You are an HR assistant generating professional offer letters. Keep it concise and professional.' },
@@ -2248,7 +2245,7 @@ Return JSON with:
 Company: ${defaults.company_name || 'Phoneme Solutions Pvt. Ltd.'}
 Company Address: ${defaults.company_address || 'C-124 A, Sector 2, Noida – 201301'}`;
 
-    const completion = await openai.chat.completions.create({
+    const completion = await AIProvider.chat({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
@@ -2655,7 +2652,7 @@ TODAY'S DATE: ${new Date().toLocaleDateString('en-US', { month: 'short', year: '
         let extractedData: any = null;
 
         // Use GPT-4 for intelligent extraction and matching
-        const extractionCompletion = await openai.chat.completions.create({
+        const extractionCompletion = await AIProvider.chat({
           model: 'gpt-4o-mini',
           messages: [
             {

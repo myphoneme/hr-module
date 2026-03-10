@@ -7,6 +7,7 @@ __pycache__/
 
 # Environment variables
 .env
+server/.env
 *.local
 
 # Node.js

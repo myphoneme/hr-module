@@ -13,6 +13,8 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
+    "@google/generative-ai": "^0.24.1",
     "@react-oauth/google": "^0.12.2",
     "@types/pdfkit": "^0.17.4",
     "bcrypt": "^6.0.0",

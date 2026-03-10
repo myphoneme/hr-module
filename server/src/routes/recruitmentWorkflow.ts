@@ -1,15 +1,12 @@
 import { Router, Request, Response } from 'express';
 import db from '../db';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
-import OpenAI from 'openai';
+import { AIProvider } from '../utils/aiProvider';
 
 const router = Router();
 router.use(authenticateToken);
 
-// Initialize OpenAI
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// AI configuration handled by AIProvider
 
 // =============================================
 // TYPES
@@ -330,7 +327,7 @@ Return as JSON with this structure:
   "full_jd_text": "Complete formatted JD as a single text block"
 }`;
 
-    const response = await openai.chat.completions.create({
+    const response = await AIProvider.chat({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
@@ -695,7 +692,7 @@ Example format:
   "AWS": 2
 }`;
 
-          const response = await openai.chat.completions.create({
+          const response = await AIProvider.chat({
             model: 'gpt-4o-mini',
             messages: [{ role: 'user', content: prompt }],
             response_format: { type: 'json_object' },
@@ -1026,7 +1023,7 @@ Return JSON:
   "risk_factors": ["risk1"] or []
 }`;
 
-    const response = await openai.chat.completions.create({
+    const response = await AIProvider.chat({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
@@ -1520,7 +1517,7 @@ IMPORTANT:
 - Estimate years based on total experience and typical skill progression
 - Mark matched=true if the skill appears in JD requirements (case-insensitive match)`;
 
-    const response = await openai.chat.completions.create({
+    const response = await AIProvider.chat({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
@@ -1616,7 +1613,7 @@ Return JSON with skill_experience array where each skill has estimated years and
   "certifications": []
 }`;
 
-        const response = await openai.chat.completions.create({
+        const response = await AIProvider.chat({
           model: 'gpt-4o-mini',
           messages: [{ role: 'user', content: prompt }],
           response_format: { type: 'json_object' },

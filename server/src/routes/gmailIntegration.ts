@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import db from '../db';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
+import { AIProvider } from '../utils/aiProvider';
 import {
   getGmailAuthUrl,
   exchangeCodeForTokens,
@@ -790,7 +791,7 @@ Response format:
   "missingCriteria": ["string"] | null
 }`;
 
-    const response = await openai.chat.completions.create({
+    const response = await AIProvider.chat({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' }

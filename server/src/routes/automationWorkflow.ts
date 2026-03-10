@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import db from '../db';
+import { AIProvider } from '../utils/aiProvider';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
 import type {
   AutomationWorkflowLog,
@@ -583,23 +584,7 @@ async function performAIEvaluation(candidate: any): Promise<{
   weaknesses: string[];
   recommendation: string;
 }> {
-  const openaiApiKey = process.env.OPENAI_API_KEY;
-
-  if (!openaiApiKey) {
-    // Return default evaluation if no AI
-    return {
-      score: 50,
-      analysis: 'AI evaluation not available - manual review required',
-      strengths: [],
-      weaknesses: [],
-      recommendation: 'review'
-    };
-  }
-
   try {
-    const OpenAI = (await import('openai')).default;
-    const openai = new OpenAI({ apiKey: openaiApiKey });
-
     const prompt = `Evaluate this candidate for the position and provide a detailed assessment.
 
 POSITION: ${candidate.vacancy_title || 'Open Position'}
@@ -631,8 +616,7 @@ Response format:
   "recommendation": "shortlist" | "review" | "reject"
 }`;
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+    const response = await AIProvider.chat({
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' }
     });

@@ -2,10 +2,10 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import OpenAI from 'openai';
 import db from '../db';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
 import { extractTextFromPDF } from '../utils/pdfHelper';
+import { AIProvider } from '../utils/aiProvider';
 import type {
   RAGDocument,
   RAGDocumentWithUser,
@@ -23,10 +23,6 @@ const pdfParse: (dataBuffer: Buffer) => Promise<any> = require('pdf-parse');
 
 
 const router = Router();
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || '',
-});
 
 // Types for learned patterns
 interface LearnedPattern {
@@ -210,11 +206,7 @@ function chunkText(text: string, maxTokens: number = 500, overlap: number = 50):
  * Generate embedding using OpenAI
  */
 async function generateEmbedding(text: string): Promise<number[]> {
-  const response = await openai.embeddings.create({
-    model: 'text-embedding-3-small',
-    input: text,
-  });
-  return response.data[0].embedding;
+  return await AIProvider.createEmbedding(text);
 }
 
 /**
@@ -305,7 +297,7 @@ Offer Letter Text:
 ${text}`;
 
   try {
-    const response = await openai.chat.completions.create({
+    const response = await AIProvider.chat({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'You are an HR document analysis expert. Extract structured information from offer letters. Always return valid JSON.' },
@@ -463,7 +455,7 @@ Document text:
 ${chunk}`;
 
     try {
-      const response = await openai.chat.completions.create({
+      const response = await AIProvider.chat({
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: 'You are an expert document analyst. Extract complete section content from offer letters. Always return valid JSON with all sections preserved exactly.' },
@@ -573,7 +565,7 @@ Offer Letter Text:
 ${text}`;
 
   try {
-    const response = await openai.chat.completions.create({
+    const response = await AIProvider.chat({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'You are an expert document template analyst. Extract complete template structures with exact formatting and language patterns. Always return valid JSON.' },
@@ -968,7 +960,7 @@ CRITICAL RULES:
 5. Generate relevant KRAs for the designation`;
 
   try {
-    const response = await openai.chat.completions.create({
+    const response = await AIProvider.chat({
       model: 'gpt-4o-mini',
       messages: [
         {
@@ -1213,7 +1205,7 @@ For numeric fields like experience_years, expected_salary, current_salary - extr
 Resume text:
 ${text}`;
 
-  const response = await openai.chat.completions.create({
+  const response = await AIProvider.chat({
     model: 'gpt-4o-mini',
     messages: [
       { role: 'system', content: 'You are a resume parsing expert. Extract structured information from resumes. Always return valid JSON.' },
@@ -1305,7 +1297,7 @@ IMPORTANT:
 4. Annual CTC should equal sum of all salary components
 5. Include 3-5 relevant KRAs based on the designation`;
 
-  const response = await openai.chat.completions.create({
+  const response = await AIProvider.chat({
     model: 'gpt-4o-mini',
     messages: [
       { role: 'system', content: 'You are an HR expert specializing in creating offer letters. Generate structured offer letter data based on candidate information and company standards.' },
@@ -1365,10 +1357,7 @@ router.post('/upload-training', authenticateToken, requireAdmin, uploadTraining.
       return;
     }
 
-    if (!process.env.OPENAI_API_KEY) {
-      res.status(500).json({ error: 'AI service not configured. Set OPENAI_API_KEY environment variable.' });
-      return;
-    }
+    // AI configuration check handled by AIProvider
 
     const userId = req.user!.userId;
     const filePath = req.file.path;
@@ -1566,10 +1555,7 @@ router.delete('/documents/:id', authenticateToken, requireAdmin, (req: Request, 
 // Re-process all documents to extract template profiles
 router.post('/reprocess-templates', authenticateToken, requireAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!process.env.OPENAI_API_KEY) {
-      res.status(500).json({ error: 'AI service not configured. Set OPENAI_API_KEY environment variable.' });
-      return;
-    }
+    // AI configuration check handled by AIProvider
 
     const userId = req.user!.userId;
 
@@ -1642,10 +1628,7 @@ router.post('/upload-resume', authenticateToken, uploadResume.single('resume'), 
       return;
     }
 
-    if (!process.env.OPENAI_API_KEY) {
-      res.status(500).json({ error: 'AI service not configured. Set OPENAI_API_KEY environment variable.' });
-      return;
-    }
+    // AI configuration check handled by AIProvider
 
     const userId = req.user!.userId;
     const filePath = req.file.path;
@@ -1799,10 +1782,7 @@ router.delete('/resumes/:id', authenticateToken, (req: Request, res: Response): 
 // Generate offer letter from resume
 router.post('/generate', authenticateToken, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!process.env.OPENAI_API_KEY) {
-      res.status(500).json({ error: 'AI service not configured. Set OPENAI_API_KEY environment variable.' });
-      return;
-    }
+    // AI configuration check handled by AIProvider
 
     const config = req.body as RAGGenerateRequest;
 
@@ -1850,10 +1830,7 @@ router.post('/generate', authenticateToken, async (req: Request, res: Response):
 // Generate offer letter from resume using a specific template
 router.post('/generate-with-template', authenticateToken, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!process.env.OPENAI_API_KEY) {
-      res.status(500).json({ error: 'AI service not configured. Set OPENAI_API_KEY environment variable.' });
-      return;
-    }
+    // AI configuration check handled by AIProvider
 
     const config = req.body as RAGGenerateRequest & { template_profile_id?: number };
 
@@ -1903,10 +1880,7 @@ router.post('/quick-generate', authenticateToken, uploadResume.single('resume'),
       return;
     }
 
-    if (!process.env.OPENAI_API_KEY) {
-      res.status(500).json({ error: 'AI service not configured. Set OPENAI_API_KEY environment variable.' });
-      return;
-    }
+    // AI configuration check handled by AIProvider
 
     // Check if there are any training documents
     const docCount = db.prepare(`
@@ -2155,7 +2129,7 @@ IMPORTANT RULES:
 6. Use learned patterns for company info when available`;
 
   try {
-    const response = await openai.chat.completions.create({
+    const response = await AIProvider.chat({
       model: 'gpt-4o-mini',
       messages: [
         {
@@ -2217,10 +2191,7 @@ IMPORTANT RULES:
 // Prompt-based offer letter generation - HR describes offer in plain English
 router.post('/prompt-generate', authenticateToken, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!process.env.OPENAI_API_KEY) {
-      res.status(500).json({ error: 'AI service not configured. Set OPENAI_API_KEY environment variable.' });
-      return;
-    }
+    // AI configuration check handled by AIProvider
 
     const { resume_id, prompt, signatory_id, letterhead_id } = req.body;
 
@@ -2336,7 +2307,7 @@ SALARY CALCULATION RULES:
 - Monthly = Annual / 12
 - Sum of all components × 12 should equal annual_ctc`;
 
-    const response = await openai.chat.completions.create({
+    const response = await AIProvider.chat({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'You are an expert HR assistant. Parse the HR prompt and generate accurate offer letter data. Always return valid JSON.' },
@@ -2791,10 +2762,7 @@ router.post('/extract-offer-letter', authenticateToken, uploadTraining.single('d
       return;
     }
 
-    if (!process.env.OPENAI_API_KEY) {
-      res.status(500).json({ error: 'AI service not configured. Set OPENAI_API_KEY environment variable.' });
-      return;
-    }
+    // AI configuration check handled by AIProvider
 
     const filePath = req.file.path;
 
@@ -2838,7 +2806,7 @@ IMPORTANT:
 5. Calculate perMonth as annual/12 if only annual is given
 6. Detect template_type based on designation (Trainee/Junior = short, others = long)`;
 
-    const response = await openai.chat.completions.create({
+    const response = await AIProvider.chat({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'You are an expert at extracting structured data from offer letters. Always return valid JSON. Be precise with salary calculations.' },
@@ -3348,10 +3316,7 @@ router.post('/re-extract-sections/:documentId', authenticateToken, async (req: R
 // Generate offer letter using specific template profile
 router.post('/generate-with-template', authenticateToken, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!process.env.OPENAI_API_KEY) {
-      res.status(500).json({ error: 'AI service not configured. Set OPENAI_API_KEY environment variable.' });
-      return;
-    }
+    // AI configuration check handled by AIProvider
 
     const { resume_id, template_profile_id, ...config } = req.body as RAGGenerateRequest & { template_profile_id?: number };
 
