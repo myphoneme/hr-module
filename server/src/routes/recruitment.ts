@@ -2500,45 +2500,52 @@ router.post('/screen-resumes', authenticateToken, resumeScreeningUpload.array('r
 
     const screeningResults: any[] = [];
 
-    // Process each resume
-    for (const file of files) {
-      try {
-        const filePath = file.path;
-        const fileBuffer = fs.readFileSync(filePath);
-        const fileExt = path.extname(file.originalname).toLowerCase();
+    // Process resumes in parallel with a concurrency limit
+    // We use a batch size of 5 to avoid hitting API rate limits too hard 
+    // while significantly speeding up the process compared to one-by-one (sequential).
+    const BATCH_SIZE = 5;
+    
+    for (let i = 0; i < files.length; i += BATCH_SIZE) {
+      const batch = files.slice(i, i + BATCH_SIZE);
+      
+      const batchPromises = batch.map(async (file) => {
+        try {
+          const filePath = file.path;
+          const fileBuffer = fs.readFileSync(filePath);
+          const fileExt = path.extname(file.originalname).toLowerCase();
 
-        // Step 1: Extract text from PDF or DOCX
-        let resumeText = '';
+          // Step 1: Extract text from PDF or DOCX
+          let resumeText = '';
 
-        if (fileExt === '.pdf') {
-          // Extract text from PDF using pdf-parse v2
-          const pdfParser = new PDFParse({ data: fileBuffer });
-          const textResult = await pdfParser.getText();
-          resumeText = textResult.text;
-          await pdfParser.destroy();
-        } else if (fileExt === '.docx') {
-          // Extract text from DOCX using mammoth
-          const result = await mammoth.extractRawText({ buffer: fileBuffer });
-          resumeText = result.value;
-        } else if (fileExt === '.doc') {
-          // For .doc files, try mammoth (may not work for all .doc files)
-          try {
+          if (fileExt === '.pdf') {
+            // Extract text from PDF using pdf-parse v2
+            const pdfParser = new PDFParse({ data: fileBuffer });
+            const textResult = await pdfParser.getText();
+            resumeText = textResult.text;
+            await pdfParser.destroy();
+          } else if (fileExt === '.docx') {
+            // Extract text from DOCX using mammoth
             const result = await mammoth.extractRawText({ buffer: fileBuffer });
             resumeText = result.value;
-          } catch {
-            throw new Error('Unable to parse .doc file. Please convert to .docx or .pdf');
+          } else if (fileExt === '.doc') {
+            // For .doc files, try mammoth (may not work for all .doc files)
+            try {
+              const result = await mammoth.extractRawText({ buffer: fileBuffer });
+              resumeText = result.value;
+            } catch {
+              throw new Error('Unable to parse .doc file. Please convert to .docx or .pdf');
+            }
           }
-        }
 
-        if (!resumeText || resumeText.trim().length < 50) {
-          throw new Error('Could not extract text from resume. File may be image-based or corrupted.');
-        }
+          if (!resumeText || resumeText.trim().length < 50) {
+            throw new Error('Could not extract text from resume. File may be image-based or corrupted.');
+          }
 
-        // Get JD required skills for skill-wise experience extraction
-        const jdRequiredSkills = (vacancy.skills_required || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+          // Get JD required skills for skill-wise experience extraction
+          const jdRequiredSkills = (vacancy.skills_required || '').split(',').map((s: string) => s.trim()).filter(Boolean);
 
-        // Step 2: Extract structured data AND match against JD using AI (combined for smarter results)
-        const extractionAndMatchingPrompt = `You are an expert HR recruiter screening resumes. Analyze this resume against the job requirements and provide detailed extraction and matching.
+          // Step 2: Extract structured data AND match against JD using AI (combined for smarter results)
+          const extractionAndMatchingPrompt = `You are an expert HR recruiter screening resumes. Analyze this resume against the job requirements and provide detailed extraction and matching.
 
 === JOB REQUIREMENTS ===
 Job Title: ${vacancy.title}
@@ -2649,131 +2656,121 @@ Return a JSON object:
 
 TODAY'S DATE: ${new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`;
 
-        let extractedData: any = null;
+          let extractedData: any = null;
 
-        // Use GPT-4 for intelligent extraction and matching
-        const extractionCompletion = await AIProvider.chat({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'user',
-              content: extractionAndMatchingPrompt
-            }
-          ],
-          response_format: { type: 'json_object' },
-          max_tokens: 4000,
-        });
+          // Use GPT-4 for intelligent extraction and matching
+          const extractionCompletion = await AIProvider.chat({
+            model: 'gpt-4o-mini',
+            messages: [
+              {
+                role: 'user',
+                content: extractionAndMatchingPrompt
+              }
+            ],
+            response_format: { type: 'json_object' },
+            max_tokens: 4000,
+          });
 
-        const extractionContent = extractionCompletion.choices[0].message.content || '{}';
-        extractedData = JSON.parse(extractionContent);
+          const extractionContent = extractionCompletion.choices[0].message.content || '{}';
+          extractedData = JSON.parse(extractionContent);
 
-        // Get AI's matching analysis
-        const aiAnalysis = extractedData.matching_analysis || {};
+          // Get AI's matching analysis
+          const aiAnalysis = extractedData.matching_analysis || {};
 
-        console.log('=== AI SCREENING ANALYSIS ===');
-        console.log('Candidate:', extractedData.candidate_name);
-        console.log('Total Experience:', extractedData.total_experience, 'years');
-        console.log('Relevant Experience:', extractedData.relevant_experience, 'years');
-        console.log('Skills Match Score:', aiAnalysis.skills_match_score);
-        console.log('Experience Match Score:', aiAnalysis.experience_match_score);
-        console.log('Overall Fit Score:', aiAnalysis.overall_fit_score);
-        console.log('Matched Skills:', aiAnalysis.matched_skills);
-        console.log('Missing Skills:', aiAnalysis.missing_skills);
-        console.log('AI Recommendation:', aiAnalysis.recommendation);
-        console.log('Reason:', aiAnalysis.recommendation_reason);
+          // Use AI's overall fit score as the match score
+          const matchScore = aiAnalysis.overall_fit_score || 50;
 
-        // Use AI's overall fit score as the match score
-        const matchScore = aiAnalysis.overall_fit_score || 50;
-
-        // Use AI's analysis for strong matches and gaps
-        const strongMatches: string[] = aiAnalysis.strengths || [];
-        if (aiAnalysis.matched_skills && aiAnalysis.matched_skills.length > 0) {
-          strongMatches.unshift(`${aiAnalysis.matched_skills.length} required skills matched: ${aiAnalysis.matched_skills.slice(0, 4).join(', ')}${aiAnalysis.matched_skills.length > 4 ? '...' : ''}`);
-        }
-
-        const gaps: string[] = aiAnalysis.concerns || [];
-        if (aiAnalysis.missing_skills && aiAnalysis.missing_skills.length > 0) {
-          gaps.unshift(`Missing skills: ${aiAnalysis.missing_skills.slice(0, 4).join(', ')}${aiAnalysis.missing_skills.length > 4 ? '...' : ''}`);
-        }
-
-        // Classify candidate - Use AI recommendation with score as backup
-        let classification: 'shortlisted' | 'hold' | 'rejected';
-        let rejectionReason: string | undefined;
-
-        // First, use AI's recommendation if available
-        const aiRecommendation = (aiAnalysis.recommendation || '').toUpperCase();
-        if (aiRecommendation === 'SHORTLIST') {
-          classification = 'shortlisted';
-        } else if (aiRecommendation === 'HOLD') {
-          classification = 'hold';
-        } else if (aiRecommendation === 'REJECT') {
-          classification = 'rejected';
-          rejectionReason = aiAnalysis.recommendation_reason || 'Does not meet job requirements';
-        } else {
-          // Fallback to score-based classification
-          if (matchScore >= 70) {
-            classification = 'shortlisted';
-          } else if (matchScore >= 50) {
-            classification = 'hold';
-          } else {
-            classification = 'rejected';
-            rejectionReason = gaps.length > 0 ? gaps[0] : 'Overall match score below threshold';
+          // Use AI's analysis for strong matches and gaps
+          const strongMatches: string[] = aiAnalysis.strengths || [];
+          if (aiAnalysis.matched_skills && aiAnalysis.matched_skills.length > 0) {
+            strongMatches.unshift(`${aiAnalysis.matched_skills.length} required skills matched: ${aiAnalysis.matched_skills.slice(0, 4).join(', ')}${aiAnalysis.matched_skills.length > 4 ? '...' : ''}`);
           }
+
+          const gaps: string[] = aiAnalysis.concerns || [];
+          if (aiAnalysis.missing_skills && aiAnalysis.missing_skills.length > 0) {
+            gaps.unshift(`Missing skills: ${aiAnalysis.missing_skills.slice(0, 4).join(', ')}${aiAnalysis.missing_skills.length > 4 ? '...' : ''}`);
+          }
+
+          // Classify candidate - Use AI recommendation with score as backup
+          let classification: 'shortlisted' | 'hold' | 'rejected';
+          let rejectionReason: string | undefined;
+
+          // First, use AI's recommendation if available
+          const aiRecommendation = (aiAnalysis.recommendation || '').toUpperCase();
+          if (aiRecommendation === 'SHORTLIST') {
+            classification = 'shortlisted';
+          } else if (aiRecommendation === 'HOLD') {
+            classification = 'hold';
+          } else if (aiRecommendation === 'REJECT') {
+            classification = 'rejected';
+            rejectionReason = aiAnalysis.recommendation_reason || 'Does not meet job requirements';
+          } else {
+            // Fallback to score-based classification
+            if (matchScore >= 70) {
+              classification = 'shortlisted';
+            } else if (matchScore >= 50) {
+              classification = 'hold';
+            } else {
+              classification = 'rejected';
+              rejectionReason = gaps.length > 0 ? gaps[0] : 'Overall match score below threshold';
+            }
+          }
+
+          // Generate HR-friendly summary using AI's analysis
+          const candidateExp = extractedData.total_experience || 0;
+          const summary = aiAnalysis.recommendation_reason ||
+            `${extractedData.candidate_name || 'Candidate'} is a ${candidateExp}-year experienced ${extractedData.current_role || 'professional'} from ${extractedData.current_company || 'N/A'}. ` +
+            `${strongMatches.length > 0 ? 'Strengths: ' + strongMatches.slice(0, 2).join('; ') + '. ' : ''}` +
+            `${gaps.length > 0 ? 'Concerns: ' + gaps.slice(0, 2).join('; ') + '.' : ''}`;
+
+          return {
+            file_name: file.originalname,
+            file_path: file.filename,
+            resume: {
+              candidate_name: extractedData.candidate_name,
+              email: extractedData.email,
+              phone: extractedData.phone,
+              skills: extractedData.skills || [],
+              total_experience: candidateExp,
+              relevant_experience: extractedData.relevant_experience || candidateExp,
+              education: extractedData.education,
+              current_role: extractedData.current_role,
+              current_company: extractedData.current_company,
+              location: extractedData.location,
+              notice_period: extractedData.notice_period,
+              current_salary: extractedData.current_salary,
+              expected_salary: extractedData.expected_salary,
+              skill_experience: extractedData.skill_experience || {},
+              // New fields for detailed view
+              work_history: extractedData.work_history || [],
+              projects: extractedData.projects || [],
+              education_details: extractedData.education_details || [],
+            },
+            match_score: matchScore,
+            classification,
+            strong_matches: strongMatches,
+            gaps,
+            summary,
+            rejection_reason: rejectionReason,
+            resume_text: resumeText,
+            ai_analysis: aiAnalysis, // Include full AI analysis for reference
+          };
+
+        } catch (fileError: any) {
+          console.error(`Error processing file ${file.originalname}:`, fileError);
+          return {
+            file_name: file.originalname,
+            error: `Failed to process: ${fileError.message}`,
+            classification: 'rejected',
+            rejection_reason: 'Failed to extract resume data',
+          };
         }
+      });
 
-        // Generate HR-friendly summary using AI's analysis
-        const candidateExp = extractedData.total_experience || 0;
-        const summary = aiAnalysis.recommendation_reason ||
-          `${extractedData.candidate_name || 'Candidate'} is a ${candidateExp}-year experienced ${extractedData.current_role || 'professional'} from ${extractedData.current_company || 'N/A'}. ` +
-          `${strongMatches.length > 0 ? 'Strengths: ' + strongMatches.slice(0, 2).join('; ') + '. ' : ''}` +
-          `${gaps.length > 0 ? 'Concerns: ' + gaps.slice(0, 2).join('; ') + '.' : ''}`;
-
-        console.log(`=== FINAL RESULT: ${extractedData.candidate_name} ===`);
-        console.log(`Score: ${matchScore}%, Classification: ${classification.toUpperCase()}`);
-
-        screeningResults.push({
-          file_name: file.originalname,
-          file_path: file.filename,
-          resume: {
-            candidate_name: extractedData.candidate_name,
-            email: extractedData.email,
-            phone: extractedData.phone,
-            skills: extractedData.skills || [],
-            total_experience: candidateExp,
-            relevant_experience: extractedData.relevant_experience || candidateExp,
-            education: extractedData.education,
-            current_role: extractedData.current_role,
-            current_company: extractedData.current_company,
-            location: extractedData.location,
-            notice_period: extractedData.notice_period,
-            current_salary: extractedData.current_salary,
-            expected_salary: extractedData.expected_salary,
-            skill_experience: extractedData.skill_experience || {},
-            // New fields for detailed view
-            work_history: extractedData.work_history || [],
-            projects: extractedData.projects || [],
-            education_details: extractedData.education_details || [],
-          },
-          match_score: matchScore,
-          classification,
-          strong_matches: strongMatches,
-          gaps,
-          summary,
-          rejection_reason: rejectionReason,
-          resume_text: resumeText,
-          ai_analysis: aiAnalysis, // Include full AI analysis for reference
-        });
-
-      } catch (fileError: any) {
-        console.error(`Error processing file ${file.originalname}:`, fileError);
-        screeningResults.push({
-          file_name: file.originalname,
-          error: `Failed to process: ${fileError.message}`,
-          classification: 'rejected',
-          rejection_reason: 'Failed to extract resume data',
-        });
-      }
+      const batchResults = await Promise.all(batchPromises);
+      screeningResults.push(...batchResults);
     }
+
 
     res.json({
       success: true,
