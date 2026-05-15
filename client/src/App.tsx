@@ -87,7 +87,7 @@ function App() {
         />
         <div className={`${sidebarCollapsed ? 'ml-16' : 'ml-64'} transition-all duration-300`}>
           <Header
-            onOpenAIChat={() => setShowAIChat(true)}
+            onOpenChat={() => setShowAIChat(true)}
             onOpenMessages={() => setShowMessages(true)}
             sidebarCollapsed={sidebarCollapsed}
           />

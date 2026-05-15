@@ -403,7 +403,7 @@ Always be professional and friendly. Use the user's name occasionally to persona
       tool_choice: 'auto',
     });
 
-    let assistantMessage = response.choices[0].message;
+    let assistantMessage = response.choices[0].message as any;
 
     // Process tool calls in a loop
     let iterations = 0;

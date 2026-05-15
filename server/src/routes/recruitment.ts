@@ -244,7 +244,6 @@ Format the output as JSON with these keys:
 - Key Skills: ${skills_required || 'Not specified'}`;
 
     const completion = await AIProvider.chat({
-      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -306,7 +305,6 @@ Important rules:
 - Examples of skills to capture: React, Node.js, JavaScript, TypeScript, Python, AWS, Docker, SQL, MongoDB, Git, REST API, GraphQL, etc.`;
 
     const extractionResponse = await AIProvider.chat({
-      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: extractionPrompt },
         { role: 'user', content: message }
@@ -418,16 +416,16 @@ Generate a JSON response with:
 
 Use industry-standard language for the ${mergedData.title} role. Be specific and professional.`;
 
-      const jdResponse = await AIProvider.chat({
-        model: 'gpt-4o-mini',
+      const response = await AIProvider.chat({
         messages: [
+
           { role: 'system', content: jdPrompt }
         ],
         response_format: { type: 'json_object' },
         temperature: 0.7,
       });
 
-      const jdContent = JSON.parse(jdResponse.choices[0].message.content || '{}');
+      const jdContent = JSON.parse(response.choices[0].message.content || '{}');
 
       // Ensure user-mentioned skills are included in the final skills list
       let finalSkills: string[] = [];
@@ -630,8 +628,7 @@ Rules:
 
       try {
         const completion = await AIProvider.chat({
-          model: 'gpt-4o-mini',
-          messages: [
+              messages: [
             { role: 'system', content: 'You are an HR assistant that extracts candidate information from resumes. Be accurate and never assume data that is not present.' },
             { role: 'user', content: extractionPrompt }
           ],
@@ -819,8 +816,7 @@ router.post('/candidates', authenticateToken, upload.single('resume'), async (re
 
         // First, extract the text
         const textCompletion = await AIProvider.chat({
-          model: 'gpt-4o-mini',
-          messages: [
+              messages: [
             {
               role: 'user',
               content: [
@@ -845,8 +841,7 @@ router.post('/candidates', authenticateToken, upload.single('resume'), async (re
         // Now extract structured data including experience
         if (resume_extracted_text) {
           const structuredCompletion = await AIProvider.chat({
-            model: 'gpt-4o-mini',
-            messages: [
+                  messages: [
               {
                 role: 'user',
                 content: `Extract structured information from this resume text. Return a JSON object.
@@ -949,8 +944,7 @@ Skills: ${skills || 'N/A'}
 Required: ${candidateWithVacancy?.skills_required || 'N/A'}, ${candidateWithVacancy?.experience_min || 0}-${candidateWithVacancy?.experience_max || 'any'} yrs`;
 
         const screeningCompletion = await AIProvider.chat({
-          model: 'gpt-4o-mini',
-          messages: [
+              messages: [
             { role: 'system', content: screeningPrompt },
             { role: 'user', content: screeningUserPrompt }
           ],
@@ -1106,7 +1100,6 @@ Required Skills: ${candidate.skills_required || 'Not specified'}
 ${candidate.resume_extracted_text ? `Resume Content:\n${candidate.resume_extracted_text.substring(0, 3000)}` : ''}`;
 
     const completion = await AIProvider.chat({
-      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -1179,7 +1172,6 @@ Return ONLY a JSON object:
 }`;
 
     const completion = await AIProvider.chat({
-      model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: extractionPrompt }],
       response_format: { type: 'json_object' },
       max_tokens: 500,
@@ -1468,7 +1460,6 @@ Job Requirements: ${interview.requirements || 'Not specified'}
 ${interview.resume_extracted_text ? `Candidate Background:\n${interview.resume_extracted_text.substring(0, 2000)}` : ''}`;
 
     const completion = await AIProvider.chat({
-      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -1750,7 +1741,6 @@ Based on the criteria, provide scoring and automatic decision:
 - Score in between: Needs manual review`;
 
     const completion = await AIProvider.chat({
-      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -1859,8 +1849,7 @@ Skills: ${candidateData.skills || 'N/A'}
 Required: ${candidateData.skills_required || 'N/A'}, ${candidateData.experience_min || 0}-${candidateData.experience_max || 'any'} yrs`;
 
         const completion = await AIProvider.chat({
-          model: 'gpt-4o-mini',
-          messages: [
+              messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
           ],
@@ -2048,8 +2037,7 @@ Return JSON with:
 }`;
 
           const offerCompletion = await AIProvider.chat({
-            model: 'gpt-4o-mini',
-            messages: [
+                  messages: [
               { role: 'system', content: 'You are an HR assistant generating professional offer letters. Keep it concise and professional.' },
               { role: 'user', content: offerPrompt }
             ],
@@ -2246,7 +2234,6 @@ Company: ${defaults.company_name || 'Phoneme Solutions Pvt. Ltd.'}
 Company Address: ${defaults.company_address || 'C-124 A, Sector 2, Noida – 201301'}`;
 
     const completion = await AIProvider.chat({
-      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -2501,9 +2488,9 @@ router.post('/screen-resumes', authenticateToken, resumeScreeningUpload.array('r
     const screeningResults: any[] = [];
 
     // Process resumes in parallel with a concurrency limit
-    // We use a batch size of 5 to avoid hitting API rate limits too hard 
-    // while significantly speeding up the process compared to one-by-one (sequential).
-    const BATCH_SIZE = 5;
+    // Get AI config to determine optimal batch size
+    const aiConfig = await AIProvider.getConfig();
+    const BATCH_SIZE = aiConfig.activeProvider === 'local' ? 1 : 5;
     
     for (let i = 0; i < files.length; i += BATCH_SIZE) {
       const batch = files.slice(i, i + BATCH_SIZE);
@@ -2660,8 +2647,7 @@ TODAY'S DATE: ${new Date().toLocaleDateString('en-US', { month: 'short', year: '
 
           // Use GPT-4 for intelligent extraction and matching
           const extractionCompletion = await AIProvider.chat({
-            model: 'gpt-4o-mini',
-            messages: [
+                  messages: [
               {
                 role: 'user',
                 content: extractionAndMatchingPrompt

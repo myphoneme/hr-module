@@ -750,21 +750,7 @@ async function performAIScreening(resumeText: string, vacancy: any): Promise<{
   recommendation: 'shortlist' | 'review' | 'reject';
   missingCriteria: string | null;
 }> {
-  // Check if OpenAI is configured
-  const openaiApiKey = process.env.OPENAI_API_KEY;
-  if (!openaiApiKey) {
-    return {
-      score: 50,
-      analysis: 'AI screening not available - OpenAI API key not configured',
-      recommendation: 'review',
-      missingCriteria: null
-    };
-  }
-
   try {
-    const OpenAI = (await import('openai')).default;
-    const openai = new OpenAI({ apiKey: openaiApiKey });
-
     const prompt = `Analyze this resume against the job requirements and provide a screening score.
 
 JOB DETAILS:
@@ -792,7 +778,6 @@ Response format:
 }`;
 
     const response = await AIProvider.chat({
-      model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' }
     });

@@ -150,7 +150,7 @@ export function AIAssistant({ isOpen, onClose }: AIAssistantProps) {
             </div>
             <div>
               <h2 className="font-semibold text-gray-900 dark:text-white">AI Assistant</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Powered by GPT-4</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Powered by Local AI</p>
             </div>
           </div>
           <div className="flex items-center gap-1">

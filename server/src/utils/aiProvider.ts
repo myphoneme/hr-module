@@ -1,14 +1,13 @@
-import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Anthropic from '@anthropic-ai/sdk';
 import db from '../db';
 
-export type AIProviderType = 'openai' | 'gemini' | 'anthropic';
+export type AIProviderType = 'local' | 'gemini' | 'anthropic';
 
 export interface AIConfig {
   activeProvider: AIProviderType;
   providers: {
-    openai: { apiKey: string; model: string };
+    local: { endpoint: string; model: string };
     gemini: { apiKey: string; model: string };
     anthropic: { apiKey: string; model: string };
   };
@@ -20,13 +19,30 @@ export class AIProvider {
   static async getConfig(): Promise<AIConfig> {
     const setting = db.prepare('SELECT value FROM settings WHERE key = ?').get('ai_config') as { value: string } | undefined;
     if (setting) {
-      this.config = JSON.parse(setting.value);
+      const config = JSON.parse(setting.value);
+      // Migration: convert openai to local if it exists in DB
+      if (config.providers.openai) {
+        config.providers.local = {
+          endpoint: 'http://10.100.60.121:11434/api/generate',
+          model: 'gemma4:e4b'
+        };
+        delete config.providers.openai;
+        if (config.activeProvider === 'openai') {
+          config.activeProvider = 'local';
+        }
+        // Save migration
+        db.prepare('UPDATE settings SET value = ? WHERE key = ?').run(JSON.stringify(config), 'ai_config');
+      }
+      this.config = config;
     } else {
       // Fallback to env variables if setting not found
       this.config = {
-        activeProvider: (process.env.AI_PROVIDER as AIProviderType) || 'openai',
+        activeProvider: (process.env.AI_PROVIDER as AIProviderType) || 'local',
         providers: {
-          openai: { apiKey: process.env.OPENAI_API_KEY || '', model: 'gpt-4o-mini' },
+          local: { 
+            endpoint: process.env.LOCAL_AI_ENDPOINT || 'http://10.100.60.121:11434/api/generate', 
+            model: process.env.LOCAL_AI_MODEL || 'gemma4:e4b' 
+          },
           gemini: { apiKey: process.env.GEMINI_API_KEY || '', model: 'gemini-1.5-pro' },
           anthropic: { apiKey: process.env.ANTHROPIC_API_KEY || '', model: 'claude-3-5-sonnet-20240620' }
         }
@@ -40,29 +56,86 @@ export class AIProvider {
     const provider = config.activeProvider;
     const providerConfig = config.providers[provider];
 
-    if (!providerConfig.apiKey) {
+    if (provider === 'local') {
+      return this.chatLocal(providerConfig as { endpoint: string; model: string }, options);
+    }
+
+    if (!(providerConfig as { apiKey: string }).apiKey) {
       throw new Error(`API Key for ${provider} is not configured.`);
     }
 
     switch (provider) {
-      case 'openai':
-        return this.chatOpenAI(providerConfig, options);
       case 'gemini':
-        return this.chatGemini(providerConfig, options);
+        return this.chatGemini(providerConfig as { apiKey: string; model: string }, options);
       case 'anthropic':
-        return this.chatAnthropic(providerConfig, options);
+        return this.chatAnthropic(providerConfig as { apiKey: string; model: string }, options);
       default:
         throw new Error(`Unsupported AI provider: ${provider}`);
     }
   }
 
-  private static async chatOpenAI(config: { apiKey: string; model: string }, options: any) {
-    const openai = new OpenAI({ apiKey: config.apiKey });
-    const response = await openai.chat.completions.create({
-      model: config.model,
-      ...options
-    });
-    return response;
+  private static async chatLocal(config: { endpoint: string; model: string }, options: any) {
+    // Convert messages to a single prompt for /api/generate
+    let prompt = '';
+    if (options.messages) {
+      prompt = options.messages.map((m: any) => {
+        const role = m.role === 'system' ? 'System' : m.role === 'assistant' ? 'Assistant' : 'User';
+        return `${role}: ${m.content}`;
+      }).join('\n') + '\nAssistant: ';
+    } else if (options.prompt) {
+      prompt = options.prompt;
+    }
+
+    try {
+      const body: any = {
+        model: config.model,
+        prompt: prompt,
+        stream: false,
+        options: {
+          temperature: options.temperature || 0.7,
+          num_predict: options.max_tokens || 2048,
+        }
+      };
+
+      if (options.response_format?.type === 'json_object') {
+        body.format = 'json';
+      }
+
+      const response = await fetch(config.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(300000) // 300 seconds timeout
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Local AI API error (${response.status}): ${errorText}`);
+      }
+
+      const data = await response.json() as any;
+      const content = data.response;
+
+      return {
+        choices: [{
+          message: {
+            role: 'assistant',
+            content: content,
+          }
+        }],
+        usage: {
+          total_tokens: (data.prompt_eval_count || 0) + (data.eval_count || 0),
+          prompt_tokens: data.prompt_eval_count || 0,
+          completion_tokens: data.eval_count || 0
+        }
+      };
+    } catch (error: any) {
+      console.error('Local AI Request Error:', error);
+      if (error.name === 'TimeoutError') {
+        throw new Error('Local AI request timed out after 300 seconds');
+      }
+      throw error;
+    }
   }
 
   private static async chatGemini(config: { apiKey: string; model: string }, options: any) {
@@ -105,7 +178,7 @@ export class AIProvider {
 
         const model = genAI.getGenerativeModel(modelOptions);
 
-        // Map OpenAI messages to Gemini format
+        // Map messages to Gemini format
         let contents = options.messages
           .filter((m: any) => m.role !== 'system' || !isNewModel)
           .map((m: any) => {
@@ -259,43 +332,47 @@ export class AIProvider {
      const provider = config.activeProvider;
      const providerConfig = config.providers[provider];
 
-     if (provider === 'openai') {
-        const openai = new OpenAI({ apiKey: providerConfig.apiKey });
-        const response = await openai.embeddings.create({
-          model: 'text-embedding-3-small',
-          input: text
-        });
-        return response.data[0].embedding;
+     if (provider === 'local') {
+        const localConfig = providerConfig as { endpoint: string; model: string };
+        const endpoint = localConfig.endpoint.replace('/generate', '/embeddings');
+        try {
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: localConfig.model,
+              prompt: text
+            })
+          });
+          const data = await response.json() as any;
+          return data.embedding;
+        } catch (error) {
+          console.error('Local embedding error:', error);
+          // Fallback to Gemini if available
+          if (config.providers.gemini.apiKey) {
+            return this.createEmbeddingWithProvider('gemini', config.providers.gemini.apiKey, text);
+          }
+          throw error;
+        }
      } else if (provider === 'gemini') {
-        const genAI = new GoogleGenerativeAI(providerConfig.apiKey);
+        const geminiConfig = providerConfig as { apiKey: string; model: string };
+        const genAI = new GoogleGenerativeAI(geminiConfig.apiKey);
         const model = genAI.getGenerativeModel({ model: "text-embedding-004"});
         const result = await model.embedContent(text);
         return result.embedding.values;
      } else {
-        // Anthropic doesn't have an embedding API, so we might need to fallback to OpenAI or Gemini for embeddings if allowed
-        // For now, let's try to use OpenAI if available, otherwise Gemini
-        if (config.providers.openai.apiKey) {
-           return this.createEmbeddingWithProvider('openai', config.providers.openai.apiKey, text);
-        } else if (config.providers.gemini.apiKey) {
+        // Anthropic doesn't have an embedding API
+        if (config.providers.gemini.apiKey) {
            return this.createEmbeddingWithProvider('gemini', config.providers.gemini.apiKey, text);
         }
         throw new Error("No provider available for embeddings (Anthropic does not support embeddings)");
      }
   }
 
-  private static async createEmbeddingWithProvider(provider: 'openai' | 'gemini', apiKey: string, text: string) {
-    if (provider === 'openai') {
-        const openai = new OpenAI({ apiKey });
-        const response = await openai.embeddings.create({
-          model: 'text-embedding-3-small',
-          input: text
-        });
-        return response.data[0].embedding;
-     } else {
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "text-embedding-004"});
-        const result = await model.embedContent(text);
-        return result.embedding.values;
-     }
+  private static async createEmbeddingWithProvider(provider: 'gemini', apiKey: string, text: string) {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "text-embedding-004"});
+    const result = await model.embedContent(text);
+    return result.embedding.values;
   }
 }

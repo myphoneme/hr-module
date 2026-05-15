@@ -6,12 +6,12 @@ import { timeAgo } from '../../utils/time';
 import type { Notification } from '../../types';
 
 interface HeaderProps {
-  onOpenAIChat?: () => void;
+  onOpenChat?: () => void;
   onOpenMessages?: () => void;
   sidebarCollapsed: boolean;
 }
 
-export function Header({ onOpenAIChat, onOpenMessages, sidebarCollapsed }: HeaderProps) {
+export function Header({ onOpenChat, onOpenMessages, sidebarCollapsed }: HeaderProps) {
   const { user, logout } = useAuth();
   const { theme, setTheme, resolvedTheme } = useTheme();
 
@@ -85,7 +85,7 @@ export function Header({ onOpenAIChat, onOpenMessages, sidebarCollapsed }: Heade
         <div className="flex items-center gap-2">
           {/* AI Assistant */}
           <button
-            onClick={onOpenAIChat}
+            onClick={onOpenChat}
             className="p-2 text-gray-500 hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-gray-700 rounded-lg transition-colors relative group"
             title="AI Assistant"
           >

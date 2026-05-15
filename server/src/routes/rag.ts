@@ -297,9 +297,9 @@ Offer Letter Text:
 ${text}`;
 
   try {
-    const response = await AIProvider.chat({
-      model: 'gpt-4o-mini',
+    const completion = await AIProvider.chat({
       messages: [
+
         { role: 'system', content: 'You are an HR document analysis expert. Extract structured information from offer letters. Always return valid JSON.' },
         { role: 'user', content: prompt }
       ],
@@ -307,7 +307,7 @@ ${text}`;
       response_format: { type: 'json_object' },
     });
 
-    const content = response.choices[0].message.content;
+    const content = completion.choices[0].message.content;
     if (!content) return null;
 
     const analysis = JSON.parse(content);
@@ -455,9 +455,9 @@ Document text:
 ${chunk}`;
 
     try {
-      const response = await AIProvider.chat({
-        model: 'gpt-4o-mini',
+      const completion = await AIProvider.chat({
         messages: [
+
           { role: 'system', content: 'You are an expert document analyst. Extract complete section content from offer letters. Always return valid JSON with all sections preserved exactly.' },
           { role: 'user', content: prompt }
         ],
@@ -466,7 +466,7 @@ ${chunk}`;
         response_format: { type: 'json_object' },
       });
 
-      const content = response.choices[0].message.content;
+      const content = completion.choices[0].message.content;
       if (content) {
         const parsed = JSON.parse(content);
         if (parsed.sections && Array.isArray(parsed.sections)) {
@@ -565,9 +565,9 @@ Offer Letter Text:
 ${text}`;
 
   try {
-    const response = await AIProvider.chat({
-      model: 'gpt-4o-mini',
+    const completion = await AIProvider.chat({
       messages: [
+
         { role: 'system', content: 'You are an expert document template analyst. Extract complete template structures with exact formatting and language patterns. Always return valid JSON.' },
         { role: 'user', content: prompt }
       ],
@@ -575,7 +575,7 @@ ${text}`;
       response_format: { type: 'json_object' },
     });
 
-    const content = response.choices[0].message.content;
+    const content = completion.choices[0].message.content;
     if (!content) return null;
 
     return JSON.parse(content);
@@ -960,9 +960,9 @@ CRITICAL RULES:
 5. Generate relevant KRAs for the designation`;
 
   try {
-    const response = await AIProvider.chat({
-      model: 'gpt-4o-mini',
+    const completion = await AIProvider.chat({
       messages: [
+
         {
           role: 'system',
           content: 'You are an expert HR professional. Generate offer letters that EXACTLY match the provided template format, preserving language style, phrases, and structure. Always return valid JSON.'
@@ -973,7 +973,7 @@ CRITICAL RULES:
       response_format: { type: 'json_object' },
     });
 
-    const content = response.choices[0].message.content;
+    const content = completion.choices[0].message.content;
     if (!content) {
       return { success: false, error: 'No response from AI' };
     }
@@ -1205,9 +1205,9 @@ For numeric fields like experience_years, expected_salary, current_salary - extr
 Resume text:
 ${text}`;
 
-  const response = await AIProvider.chat({
-    model: 'gpt-4o-mini',
+  const completion = await AIProvider.chat({
     messages: [
+
       { role: 'system', content: 'You are a resume parsing expert. Extract structured information from resumes. Always return valid JSON.' },
       { role: 'user', content: prompt }
     ],
@@ -1215,7 +1215,8 @@ ${text}`;
     response_format: { type: 'json_object' },
   });
 
-  const content = response.choices[0].message.content;
+  const content = completion.choices[0].message.content;
+
   if (!content) throw new Error('No response from AI');
 
   return JSON.parse(content);
@@ -1297,9 +1298,9 @@ IMPORTANT:
 4. Annual CTC should equal sum of all salary components
 5. Include 3-5 relevant KRAs based on the designation`;
 
-  const response = await AIProvider.chat({
-    model: 'gpt-4o-mini',
+  const completion = await AIProvider.chat({
     messages: [
+
       { role: 'system', content: 'You are an HR expert specializing in creating offer letters. Generate structured offer letter data based on candidate information and company standards.' },
       { role: 'user', content: prompt }
     ],
@@ -1307,7 +1308,8 @@ IMPORTANT:
     response_format: { type: 'json_object' },
   });
 
-  const content = response.choices[0].message.content;
+  const content = completion.choices[0].message.content;
+
   if (!content) {
     return { success: false, error: 'No response from AI' };
   }
@@ -2129,9 +2131,9 @@ IMPORTANT RULES:
 6. Use learned patterns for company info when available`;
 
   try {
-    const response = await AIProvider.chat({
-      model: 'gpt-4o-mini',
+    const completion = await AIProvider.chat({
       messages: [
+
         {
           role: 'system',
           content: 'You are an expert HR professional who creates offer letters. Use the learned patterns and benchmarks to generate accurate, professional offer letter data. Always return valid JSON.'
@@ -2142,7 +2144,7 @@ IMPORTANT RULES:
       response_format: { type: 'json_object' },
     });
 
-    const content = response.choices[0].message.content;
+    const content = completion.choices[0].message.content;
     if (!content) {
       return { success: false, error: 'No response from AI' };
     }
@@ -2307,9 +2309,9 @@ SALARY CALCULATION RULES:
 - Monthly = Annual / 12
 - Sum of all components × 12 should equal annual_ctc`;
 
-    const response = await AIProvider.chat({
-      model: 'gpt-4o-mini',
+    const completion = await AIProvider.chat({
       messages: [
+
         { role: 'system', content: 'You are an expert HR assistant. Parse the HR prompt and generate accurate offer letter data. Always return valid JSON.' },
         { role: 'user', content: aiPrompt }
       ],
@@ -2317,7 +2319,7 @@ SALARY CALCULATION RULES:
       response_format: { type: 'json_object' },
     });
 
-    const content = response.choices[0].message.content;
+    const content = completion.choices[0].message.content;
     if (!content) {
       res.status(500).json({ success: false, error: 'No response from AI' });
       return;
@@ -2806,9 +2808,9 @@ IMPORTANT:
 5. Calculate perMonth as annual/12 if only annual is given
 6. Detect template_type based on designation (Trainee/Junior = short, others = long)`;
 
-    const response = await AIProvider.chat({
-      model: 'gpt-4o-mini',
+    const completion = await AIProvider.chat({
       messages: [
+
         { role: 'system', content: 'You are an expert at extracting structured data from offer letters. Always return valid JSON. Be precise with salary calculations.' },
         { role: 'user', content: prompt }
       ],
@@ -2816,7 +2818,7 @@ IMPORTANT:
       response_format: { type: 'json_object' },
     });
 
-    const content = response.choices[0].message.content;
+    const content = completion.choices[0].message.content;
     if (!content) {
       res.status(500).json({ error: 'No response from AI' });
       return;
@@ -3380,7 +3382,9 @@ router.post('/auto-generate-with-template', authenticateToken, uploadResume.sing
       return;
     }
 
-    if (!process.env.OPENAI_API_KEY) {
+    // Check if AI is configured
+    const aiConfig = await AIProvider.getConfig();
+    if (!aiConfig) {
       res.status(500).json({ error: 'AI service not configured.' });
       return;
     }

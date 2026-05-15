@@ -328,8 +328,8 @@ Return as JSON with this structure:
 }`;
 
     const response = await AIProvider.chat({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
+      messages: [
+{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
       temperature: 0.7,
     });
@@ -693,8 +693,8 @@ Example format:
 }`;
 
           const response = await AIProvider.chat({
-            model: 'gpt-4o-mini',
-            messages: [{ role: 'user', content: prompt }],
+            messages: [
+{ role: 'user', content: prompt }],
             response_format: { type: 'json_object' },
             temperature: 0.3,
           });
@@ -1024,8 +1024,8 @@ Return JSON:
 }`;
 
     const response = await AIProvider.chat({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
+      messages: [
+{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
       temperature: 0.3,
     });
@@ -1518,8 +1518,8 @@ IMPORTANT:
 - Mark matched=true if the skill appears in JD requirements (case-insensitive match)`;
 
     const response = await AIProvider.chat({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
+      messages: [
+{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
       temperature: 0.3,
     });
@@ -1614,8 +1614,8 @@ Return JSON with skill_experience array where each skill has estimated years and
 }`;
 
         const response = await AIProvider.chat({
-          model: 'gpt-4o-mini',
-          messages: [{ role: 'user', content: prompt }],
+          messages: [
+{ role: 'user', content: prompt }],
           response_format: { type: 'json_object' },
           temperature: 0.3,
         });

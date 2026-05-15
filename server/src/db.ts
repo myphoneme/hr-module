@@ -1439,9 +1439,9 @@ if (!domainSetting) {
 const aiConfigSetting = db.prepare('SELECT * FROM settings WHERE key = ?').get('ai_config') as { value: string } | undefined;
 if (!aiConfigSetting) {
   const defaultConfig = {
-    activeProvider: 'openai',
+    activeProvider: 'local',
     providers: {
-      openai: { apiKey: process.env.OPENAI_API_KEY || '', model: 'gpt-4o-mini' },
+      local: { endpoint: 'http://10.100.60.121:11434/api/generate', model: 'gemma4:e4b' },
       gemini: { apiKey: process.env.GEMINI_API_KEY || '', model: 'gemini-1.5-flash' },
       anthropic: { apiKey: process.env.ANTHROPIC_API_KEY || '', model: 'claude-3-5-sonnet-20240620' }
     }
@@ -1451,7 +1451,8 @@ if (!aiConfigSetting) {
     VALUES (?, ?)
   `).run('ai_config', JSON.stringify(defaultConfig));
   console.log('Default AI configuration setting created');
-} else {
+}
+ else {
   // Migration: Force update gemini-1.5-pro to gemini-1.5-flash if it's currently set
   const currentConfig = JSON.parse(aiConfigSetting.value);
   if (currentConfig.providers.gemini.model === 'gemini-1.5-pro') {

@@ -93,20 +93,35 @@ function AISettingsTab() {
   const updateSetting = useUpdateSetting();
 
   const [config, setConfig] = useState({
-    activeProvider: 'openai',
+    activeProvider: 'local',
     providers: {
-      openai: { apiKey: '', model: 'gpt-4o-mini' },
-      gemini: { apiKey: '', model: 'gemini-1.5-pro' },
+      local: { endpoint: 'http://10.100.60.121:11434/api/generate', model: 'gemma4:e4b' },
+      gemini: { apiKey: '', model: 'gemini-1.5-flash' },
       anthropic: { apiKey: '', model: 'claude-3-5-sonnet-20240620' }
     }
   });
   const [initialized, setInitialized] = useState(false);
 
   if (aiConfigSetting && !initialized) {
-    setConfig({
-      ...config,
-      ...aiConfigSetting.value
-    });
+    const rawValue = aiConfigSetting.value;
+    // Handle migration of openai provider to local if it exists in DB value
+    if (rawValue.providers.openai) {
+      const migrated = { ...rawValue };
+      migrated.providers.local = {
+        endpoint: 'http://10.100.60.121:11434/api/generate',
+        model: 'gemma4:e4b'
+      };
+      delete migrated.providers.openai;
+      if (migrated.activeProvider === 'openai') {
+        migrated.activeProvider = 'local';
+      }
+      setConfig(migrated);
+    } else {
+      setConfig({
+        ...config,
+        ...rawValue
+      });
+    }
     setInitialized(true);
   }
 
@@ -131,7 +146,7 @@ function AISettingsTab() {
     <div>
       <h2 className="text-xl font-semibold text-gray-900 mb-2">Global AI Configuration</h2>
       <p className="text-gray-500 text-sm mb-6">
-        Configure API keys and select the default provider for all AI-related features.
+        Configure API details and select the default provider for all AI-related features.
       </p>
 
       <div className="space-y-6">
@@ -142,50 +157,52 @@ function AISettingsTab() {
             onChange={(e) => setConfig({ ...config, activeProvider: e.target.value })}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 bg-white"
           >
-            <option value="openai">OpenAI</option>
+            <option value="local">Local LLM (Ollama)</option>
             <option value="gemini">Google Gemini</option>
             <option value="anthropic">Anthropic Claude</option>
           </select>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* OpenAI Config */}
+          {/* Local LLM Config */}
           <div className="bg-white p-6 rounded-xl border border-gray-200">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
-                <svg viewBox="0 0 24 24" className="w-5 h-5 text-white" fill="currentColor">
-                  <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5153-4.9108 6.0462 6.0462 0 0 0-4.7471-3.1202 5.9847 5.9847 0 0 0-7.6923 3.1202 6.0462 6.0462 0 0 0-4.7471 3.1202 5.9847 5.9847 0 0 0-.5153 4.9108 6.0462 6.0462 0 0 0-3.1202 4.7471 5.9847 5.9847 0 0 0 3.1202 7.6923 6.0462 6.0462 0 0 0 4.7471 3.1202 5.9847 5.9847 0 0 0 7.6923-3.1202 6.0462 6.0462 0 0 0 4.7471-3.1202 5.9847 5.9847 0 0 0 .5153-4.9108 6.0462 6.0462 0 0 0 3.1202-4.7471 5.9847 5.9847 0 0 0-3.1202-7.6923ZM18.3051 20.1776a4.1082 4.1082 0 0 1-5.7465 0l-5.6486-5.6486 1.4142-1.4142 4.2344 4.2344V4.4142h2v12.9392l4.2344-4.2344 1.4142 1.4142-5.9021 5.6486Z" />
+              <div className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center">
+                <svg viewBox="0 0 24 24" className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                  <line x1="8" y1="21" x2="16" y2="21" />
+                  <line x1="12" y1="17" x2="12" y2="21" />
                 </svg>
               </div>
-              <h3 className="font-semibold text-gray-900">OpenAI</h3>
+              <h3 className="font-semibold text-gray-900">Local LLM (Ollama)</h3>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">API Key</label>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">API Endpoint</label>
                 <input
-                  type="password"
-                  value={config.providers.openai.apiKey}
+                  type="text"
+                  value={config.providers.local.endpoint}
                   onChange={(e) => setConfig({
                     ...config,
                     providers: {
                       ...config.providers,
-                      openai: { ...config.providers.openai, apiKey: e.target.value }
+                      local: { ...config.providers.local, endpoint: e.target.value }
                     }
                   })}
-                  placeholder="sk-..."
+                  placeholder="http://..."
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Model</label>
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Model Name</label>
                 <input
                   type="text"
-                  value={config.providers.openai.model}
+                  value={config.providers.local.model}
                   onChange={(e) => setConfig({
                     ...config,
                     providers: {
                       ...config.providers,
-                      openai: { ...config.providers.openai, model: e.target.value }
+                      local: { ...config.providers.local, model: e.target.value }
                     }
                   })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
